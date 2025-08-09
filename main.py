@@ -28,6 +28,7 @@ from app.agents.collections import CollectionsAdvisor, CustomerState
 from app.agents.devcopilot import DevCopilot
 from app.agents.carecredit import CareCredit
 from app.agents.narrator import PortfolioIntelNarrator
+from app.agents.imagegen import ImageGenAgent
 
 # Load environment variables
 load_dotenv()
@@ -185,6 +186,7 @@ async def startup_event():
             'devcopilot': DevCopilot(),
             'carecredit': CareCredit(docstore=docstore, embedder=embedder, retriever=retriever),
             'narrator': PortfolioIntelNarrator(docstore=docstore, embedder=embedder, retriever=retriever),
+            'imagegen': ImageGenAgent(),
         }
         
         logger.info(f"Application startup complete - {len(agents)} agents initialized")
@@ -203,6 +205,8 @@ class ChatResponse(BaseModel):
     confidence: float
     sources: list[str] = []
     used_tavily: bool = False
+    image_data: Optional[str] = None
+    image_format: Optional[str] = None
 
 class OfferRequest(BaseModel):
     query: str
@@ -235,6 +239,11 @@ class CareCreditRequest(BaseModel):
 
 class NarratorRequest(BaseModel):
     question: str
+
+class ImageGenRequest(BaseModel):
+    prompt: str
+    include_text: Optional[bool] = True
+    style_hints: Optional[list[str]] = None
 
 # UI Routes
 @app.get("/", response_class=HTMLResponse)
@@ -291,6 +300,29 @@ async def smart_chat(request: ChatRequest):
             agent_result = agents["collections"].process_hardship_request(customer_state)
             response_text = f"Generated {len(agent_result.plans)} hardship plans"
             sources = [f"Plans available: {len(agent_result.plans)}"]
+            
+        elif routed_agent == "imagegen" and "imagegen" in agents:
+            from app.agents.imagegen import ImageGenRequest as AgentImageGenRequest
+            image_request = AgentImageGenRequest(prompt=request.message)
+            agent_result = agents["imagegen"].process_request(image_request)
+            
+            if agent_result.success:
+                response_text = agent_result.generated_text or f"Generated image: {request.message}"
+                sources = [f"Image generated successfully", f"Format: {agent_result.image_format}"]
+                
+                # Add image data to response (we'll handle this in UI)
+                return ChatResponse(
+                    response=response_text,
+                    agent=routed_agent,
+                    confidence=confidence,
+                    sources=sources,
+                    used_tavily=used_tavily,
+                    image_data=agent_result.image_base64,  # Add this field
+                    image_format=agent_result.image_format
+                )
+            else:
+                response_text = f"Failed to generate image: {agent_result.error_message}"
+                sources = ["Image generation failed"]
             
         else:
             # Fallback to RAG-based response
@@ -441,6 +473,19 @@ async def agent_narrator(request: NarratorRequest):
         return result.dict()
     except Exception as e:
         logger.error(f"PortfolioIntelNarrator error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/agent/imagegen")
+async def agent_imagegen(request: ImageGenRequest):
+    """ImageGen direct endpoint"""
+    if "imagegen" not in agents:
+        raise HTTPException(status_code=500, detail="ImageGen not initialized")
+    
+    try:
+        result = agents["imagegen"].process_request(request)
+        return result.dict()
+    except Exception as e:
+        logger.error(f"ImageGen error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/agent/trustshield")

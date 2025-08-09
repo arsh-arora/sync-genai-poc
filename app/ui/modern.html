@@ -144,6 +144,13 @@
                 color: 'text-orange-600',
                 example: 'Why did spend drop after 2025-07-31?',
                 tooltip: 'Portfolio analytics and business insights'
+            },
+            'imagegen': {
+                name: 'ImageGen',
+                icon: 'fa-image',
+                color: 'text-violet-600',
+                example: 'Create a futuristic city with flying cars and neon lights',
+                tooltip: 'AI-powered image generation from text descriptions'
             }
         };
 
@@ -180,6 +187,8 @@
                     const endpoint = selectedAgent === 'smart' ? '/chat' : `/agent/${selectedAgent}`;
                     const payload = selectedAgent === 'smart' 
                         ? { message: inputText, allow_tavily: allowTavily }
+                        : selectedAgent === 'imagegen'
+                        ? { prompt: inputText, include_text: true, style_hints: [] }
                         : { query: inputText };
 
                     const response = await fetch(endpoint, {
@@ -199,7 +208,9 @@
                         sources: data.sources || [],
                         used_tavily: data.used_tavily || false,
                         timestamp: new Date(),
-                        latency: Math.random() * 2000 + 500 // Mock latency
+                        latency: Math.random() * 2000 + 500, // Mock latency
+                        image_data: data.image_data,
+                        image_format: data.image_format
                     };
 
                     setMessages(prev => [...prev, assistantMessage]);
@@ -586,6 +597,57 @@
                                     </pre>
                                 )}
                             </div>
+
+                            {/* Generated Image Display */}
+                            {message.image_data && (
+                                <div className="mt-4">
+                                    <div className="border border-slate-200 rounded-lg overflow-hidden bg-slate-50">
+                                        <div className="p-3 bg-slate-100 border-b border-slate-200">
+                                            <div className="flex items-center justify-between text-sm">
+                                                <div className="flex items-center space-x-2">
+                                                    <i className="fas fa-image text-violet-600"></i>
+                                                    <span className="font-medium text-slate-800">Generated Image</span>
+                                                    <span className="px-2 py-1 text-xs bg-violet-100 text-violet-700 rounded">
+                                                        {message.image_format || 'PNG'}
+                                                    </span>
+                                                </div>
+                                                <button
+                                                    onClick={() => {
+                                                        const link = document.createElement('a');
+                                                        link.download = `generated-image-${Date.now()}.${(message.image_format || 'PNG').toLowerCase()}`;
+                                                        link.href = `data:image/${(message.image_format || 'png').toLowerCase()};base64,${message.image_data}`;
+                                                        link.click();
+                                                    }}
+                                                    className="text-slate-500 hover:text-slate-700"
+                                                    title="Download Image"
+                                                >
+                                                    <i className="fas fa-download"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div className="p-4">
+                                            <img
+                                                src={`data:image/${(message.image_format || 'png').toLowerCase()};base64,${message.image_data}`}
+                                                alt="Generated image"
+                                                className="max-w-full h-auto rounded border border-slate-200 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                                                style={{ maxHeight: '400px', objectFit: 'contain' }}
+                                                onClick={() => {
+                                                    // Open full-size image in new window
+                                                    const newWindow = window.open();
+                                                    newWindow.document.write(`
+                                                        <html>
+                                                            <head><title>Generated Image</title></head>
+                                                            <body style="margin:0; background:#000; display:flex; justify-content:center; align-items:center; min-height:100vh;">
+                                                                <img src="data:image/${(message.image_format || 'png').toLowerCase()};base64,${message.image_data}" style="max-width:100%; max-height:100%; object-fit:contain;" />
+                                                            </body>
+                                                        </html>
+                                                    `);
+                                                }}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Sources */}
                             {message.sources && message.sources.length > 0 && (
