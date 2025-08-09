@@ -1,7 +1,6 @@
 Directory structure:
 └── synch-genai-poc/
     ├── README.md
-    ├── debug_trustshield.py
     ├── main.py
     ├── requirements.txt
     ├── app/
@@ -15,6 +14,7 @@ Directory structure:
     │   │   ├── contracts.py
     │   │   ├── devcopilot.py
     │   │   ├── dispute.py
+    │   │   ├── imagegen.py
     │   │   ├── narrator.py
     │   │   ├── offerpilot.py
     │   │   └── trustshield.py
@@ -42,6 +42,8 @@ Directory structure:
     │   │   ├── __init__.py
     │   │   ├── core.py
     │   │   └── pipeline.py
+    │   ├── services/
+    │   │   └── pdf_processor.py
     │   ├── tools/
     │   │   ├── __init__.py
     │   │   ├── gemini_chat.py
@@ -67,218 +69,6 @@ FILE: README.md
 
 
 ================================================
-FILE: debug_trustshield.py
-================================================
-#!/usr/bin/env python3
-"""
-Debug script specifically for TrustShield Gemini integration
-"""
-
-import os
-import sys
-import json
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
-
-# Add app to path
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
-def test_gemini_chat_function():
-    """Test the exact chat function used by TrustShield"""
-    print("🔍 Testing app.llm.gemini.chat function")
-    print("=" * 45)
-    
-    try:
-        from app.llm.gemini import chat
-        
-        # Exact same call as TrustShield
-        system_prompt = """You are a fraud detection specialist. Analyze the following text and classify it into one of these categories:
-
-Categories:
-- refund_scam: Attempts to trick users into paying for fake refunds
-- account_takeover: Attempts to gain unauthorized access to accounts  
-- pii_risk: Requests for sensitive personal information
-- safe: Normal, legitimate communication
-
-Respond with ONLY a JSON object:
-{"category": "category_name", "confidence": 0.85, "reasoning": "brief explanation"}
-
-Focus on detecting sophisticated social engineering attempts."""
-
-        user_message = "Analyze this text: 'Hi'"
-        messages = [{"role": "user", "content": user_message}]
-        
-        print("📤 Sending request to Gemini...")
-        print(f"   System prompt length: {len(system_prompt)}")
-        print(f"   User message: '{user_message}'")
-        
-        response = chat(messages, system=system_prompt)
-        
-        print(f"📥 Raw response from chat function:")
-        print(f"   Type: {type(response)}")
-        print(f"   Length: {len(response) if response else 0}")
-        print(f"   Content: '{response}'")
-        
-        if response:
-            # Try parsing as JSON like TrustShield does
-            try:
-                result = json.loads(response.strip())
-                print(f"✅ JSON parsing successful: {result}")
-                return True
-            except json.JSONDecodeError as je:
-                print(f"❌ JSON parsing failed: {je}")
-                print(f"   Raw response to parse: '{response.strip()}'")
-                return False
-        else:
-            print("❌ Empty response from chat function")
-            return False
-            
-    except Exception as e:
-        print(f"❌ Error testing chat function: {e}")
-        return False
-
-def test_direct_gemini_client():
-    """Test direct Gemini client for comparison"""
-    print("\n🔍 Testing Direct Gemini Client")
-    print("=" * 35)
-    
-    try:
-        from google import genai
-        
-        api_key = os.getenv("GOOGLE_API_KEY")
-        client = genai.Client(api_key=api_key)
-        
-        prompt = """You are a fraud detection specialist. Respond with ONLY a JSON object:
-{"category": "safe", "confidence": 0.95, "reasoning": "normal greeting"}
-
-Analyze this text: 'Hi'"""
-        
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt
-        )
-        
-        print(f"📥 Direct client response:")
-        print(f"   Type: {type(response)}")
-        print(f"   Has text: {hasattr(response, 'text')}")
-        if hasattr(response, 'text'):
-            print(f"   Text length: {len(response.text) if response.text else 0}")
-            print(f"   Content: '{response.text}'")
-        
-        return response and hasattr(response, 'text') and response.text
-        
-    except Exception as e:
-        print(f"❌ Error with direct client: {e}")
-        return False
-
-def test_simple_chat():
-    """Test with very simple input"""
-    print("\n🔍 Testing Simple Chat")
-    print("=" * 25)
-    
-    try:
-        from app.llm.gemini import chat
-        
-        messages = [{"role": "user", "content": "Say hello"}]
-        response = chat(messages, system="Reply with just 'Hello'")
-        
-        print(f"📥 Simple response: '{response}'")
-        return bool(response and len(response) > 0)
-        
-    except Exception as e:
-        print(f"❌ Simple chat error: {e}")
-        return False
-
-def test_with_debug_logging():
-    """Test with debug logging enabled"""
-    print("\n🔍 Testing with Debug Logging")
-    print("=" * 32)
-    
-    import logging
-    
-    # Enable debug logging
-    logging.basicConfig(level=logging.DEBUG)
-    gemini_logger = logging.getLogger('app.llm.gemini')
-    gemini_logger.setLevel(logging.DEBUG)
-    
-    try:
-        from app.llm.gemini import chat
-        
-        messages = [{"role": "user", "content": "Test"}]
-        response = chat(messages, system="Respond with: OK")
-        
-        print(f"📥 Debug response: '{response}'")
-        return bool(response)
-        
-    except Exception as e:
-        print(f"❌ Debug test error: {e}")
-        return False
-
-def main():
-    """Run all TrustShield debug tests"""
-    print("🛡️ TrustShield Gemini Debug Suite")
-    print("=" * 35)
-    
-    api_key = os.getenv("GOOGLE_API_KEY")
-    if not api_key:
-        print("❌ GOOGLE_API_KEY not found in environment")
-        return
-    
-    print(f"✅ API Key found: {api_key[:10]}...")
-    
-    tests = [
-        ("Simple Chat Test", test_simple_chat),
-        ("Direct Gemini Client", test_direct_gemini_client),
-        ("TrustShield Chat Function", test_gemini_chat_function),
-        ("Debug Logging Test", test_with_debug_logging),
-    ]
-    
-    results = {}
-    
-    for test_name, test_func in tests:
-        print(f"\n{'='*50}")
-        print(f"🧪 {test_name}")
-        print('='*50)
-        
-        try:
-            results[test_name] = test_func()
-        except Exception as e:
-            print(f"❌ {test_name} failed with exception: {e}")
-            results[test_name] = False
-    
-    # Summary
-    print(f"\n{'='*50}")
-    print("📊 Debug Summary")
-    print('='*50)
-    
-    for test_name, result in results.items():
-        status = "✅ PASS" if result else "❌ FAIL"
-        print(f"   {test_name}: {status}")
-    
-    # Recommendations
-    print(f"\n💡 Recommendations:")
-    
-    if not results.get("Simple Chat Test"):
-        print("   - Basic chat function is broken - check app.llm.gemini")
-    
-    if results.get("Direct Gemini Client") and not results.get("TrustShield Chat Function"):
-        print("   - Direct API works but chat wrapper fails - fix chat function")
-    
-    if not any(results.values()):
-        print("   - All tests failed - likely API quota/auth issue")
-    
-    print(f"\n🎯 Next Steps:")
-    print("   1. Fix the chat function in app/llm/gemini.py")
-    print("   2. Add better error handling to TrustShield")
-    print("   3. Consider fallback responses when Gemini fails")
-
-if __name__ == "__main__":
-    main()
-
-
-================================================
 FILE: main.py
 ================================================
 """
@@ -289,10 +79,11 @@ Complete app wiring with middleware, agent endpoints, and UI
 import os
 import re
 import logging
+import time
 from pathlib import Path
 from typing import Optional, Dict, Any, Union
 
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Request, Response, UploadFile, File
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -311,6 +102,8 @@ from app.agents.collections import CollectionsAdvisor, CustomerState
 from app.agents.devcopilot import DevCopilot
 from app.agents.carecredit import CareCredit
 from app.agents.narrator import PortfolioIntelNarrator
+from app.agents.imagegen import ImageGenAgent
+from app.services.pdf_processor import LandingAIPDFProcessor, ProcessedPDF
 
 # Load environment variables
 load_dotenv()
@@ -334,6 +127,8 @@ docstore = None
 embedder = None
 retriever = None
 agents = {}  # Agent registry
+pdf_processor = None
+uploaded_pdfs = {}  # Store processed PDFs
 
 # PII Redactor Middleware
 class PIIRedactorMiddleware(BaseHTTPMiddleware):
@@ -443,7 +238,7 @@ app.add_middleware(PIIRedactorMiddleware)
 @app.on_event("startup")
 async def startup_event():
     """Initialize components on startup"""
-    global docstore, embedder, retriever, agents
+    global docstore, embedder, retriever, agents, pdf_processor
     
     try:
         logger.info("Initializing document store...")
@@ -459,6 +254,9 @@ async def startup_event():
         logger.info("Building retriever...")
         retriever = build_retriever(docstore)
         
+        logger.info("Initializing PDF processor...")
+        pdf_processor = LandingAIPDFProcessor()
+        
         logger.info("Initializing agents...")
         agents = {
             'trustshield': TrustShield(docstore=docstore, embedder=embedder, retriever=retriever),
@@ -468,6 +266,7 @@ async def startup_event():
             'devcopilot': DevCopilot(),
             'carecredit': CareCredit(docstore=docstore, embedder=embedder, retriever=retriever),
             'narrator': PortfolioIntelNarrator(docstore=docstore, embedder=embedder, retriever=retriever),
+            'imagegen': ImageGenAgent(),
         }
         
         logger.info(f"Application startup complete - {len(agents)} agents initialized")
@@ -486,6 +285,8 @@ class ChatResponse(BaseModel):
     confidence: float
     sources: list[str] = []
     used_tavily: bool = False
+    image_data: Optional[str] = None
+    image_format: Optional[str] = None
 
 class OfferRequest(BaseModel):
     query: str
@@ -518,6 +319,11 @@ class CareCreditRequest(BaseModel):
 
 class NarratorRequest(BaseModel):
     question: str
+
+class ImageGenRequest(BaseModel):
+    prompt: str
+    include_text: Optional[bool] = True
+    style_hints: Optional[list[str]] = None
 
 # UI Routes
 @app.get("/", response_class=HTMLResponse)
@@ -574,6 +380,29 @@ async def smart_chat(request: ChatRequest):
             agent_result = agents["collections"].process_hardship_request(customer_state)
             response_text = f"Generated {len(agent_result.plans)} hardship plans"
             sources = [f"Plans available: {len(agent_result.plans)}"]
+            
+        elif routed_agent == "imagegen" and "imagegen" in agents:
+            from app.agents.imagegen import ImageGenRequest as AgentImageGenRequest
+            image_request = AgentImageGenRequest(prompt=request.message)
+            agent_result = agents["imagegen"].process_request(image_request)
+            
+            if agent_result.success:
+                response_text = agent_result.generated_text or f"Generated image: {request.message}"
+                sources = [f"Image generated successfully", f"Format: {agent_result.image_format}"]
+                
+                # Add image data to response (we'll handle this in UI)
+                return ChatResponse(
+                    response=response_text,
+                    agent=routed_agent,
+                    confidence=confidence,
+                    sources=sources,
+                    used_tavily=used_tavily,
+                    image_data=agent_result.image_base64,  # Add this field
+                    image_format=agent_result.image_format
+                )
+            else:
+                response_text = f"Failed to generate image: {agent_result.error_message}"
+                sources = ["Image generation failed"]
             
         else:
             # Fallback to RAG-based response
@@ -726,6 +555,19 @@ async def agent_narrator(request: NarratorRequest):
         logger.error(f"PortfolioIntelNarrator error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/agent/imagegen")
+async def agent_imagegen(request: ImageGenRequest):
+    """ImageGen direct endpoint"""
+    if "imagegen" not in agents:
+        raise HTTPException(status_code=500, detail="ImageGen not initialized")
+    
+    try:
+        result = agents["imagegen"].process_request(request)
+        return result.dict()
+    except Exception as e:
+        logger.error(f"ImageGen error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/agent/trustshield")
 async def agent_trustshield(request: dict):
     """TrustShield direct endpoint"""
@@ -739,6 +581,150 @@ async def agent_trustshield(request: dict):
     except Exception as e:
         logger.error(f"TrustShield error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/upload/pdf")
+async def upload_pdf(file: UploadFile = File(...)):
+    """Upload and process PDF document"""
+    if not pdf_processor:
+        raise HTTPException(status_code=500, detail="PDF processor not initialized")
+    
+    # Validate file type
+    if not file.filename.lower().endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported")
+    
+    # Limit file size (10MB)
+    max_size = 10 * 1024 * 1024
+    
+    try:
+        # Save uploaded file temporarily
+        import tempfile
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
+            content = await file.read()
+            
+            if len(content) > max_size:
+                raise HTTPException(status_code=400, detail="File too large (max 10MB)")
+            
+            tmp_file.write(content)
+            tmp_path = tmp_file.name
+        
+        # Process PDF
+        logger.info(f"Processing uploaded PDF: {file.filename}")
+        processed_pdf = pdf_processor.process_pdf(tmp_path, chunk_strategy="semantic")
+        
+        # Store processed PDF
+        pdf_id = f"pdf_{int(time.time())}_{len(uploaded_pdfs)}"
+        uploaded_pdfs[pdf_id] = processed_pdf
+        
+        # Add chunks to document store for RAG
+        documents = []
+        for chunk in processed_pdf.chunks:
+            doc = chunk.to_document(file.filename)
+            doc.meta["pdf_id"] = pdf_id
+            documents.append(doc)
+        
+        # Generate embeddings and add to docstore
+        if documents:
+            texts = [doc.content for doc in documents]
+            embeddings = embedder.embed_texts(texts)
+            
+            for doc, embedding in zip(documents, embeddings):
+                doc.embedding = embedding
+            
+            docstore.write_documents(documents)
+            logger.info(f"Added {len(documents)} PDF chunks to docstore")
+        
+        # Clean up temporary file
+        os.unlink(tmp_path)
+        
+        return {
+            "success": True,
+            "pdf_id": pdf_id,
+            "filename": file.filename,
+            "total_pages": processed_pdf.total_pages,
+            "chunks_extracted": len(processed_pdf.chunks),
+            "processing_time": processed_pdf.processing_time,
+            "file_size": processed_pdf.file_size
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error processing PDF upload: {e}")
+        # Clean up temp file if it exists
+        if 'tmp_path' in locals():
+            try:
+                os.unlink(tmp_path)
+            except:
+                pass
+        raise HTTPException(status_code=500, detail=f"PDF processing failed: {str(e)}")
+
+@app.get("/pdf/{pdf_id}/info")
+async def get_pdf_info(pdf_id: str):
+    """Get detailed information about a processed PDF including chunks"""
+    if pdf_id not in uploaded_pdfs:
+        raise HTTPException(status_code=404, detail="PDF not found")
+    
+    pdf = uploaded_pdfs[pdf_id]
+    return {
+        "pdf_id": pdf_id,
+        "filename": pdf.filename,
+        "total_pages": pdf.total_pages,
+        "chunks": [
+            {
+                "chunk_id": chunk.chunk_id,
+                "text": chunk.text[:100] + "..." if len(chunk.text) > 100 else chunk.text,
+                "page_number": chunk.page_number,
+                "bbox": chunk.bbox.to_dict(),
+                "confidence": chunk.confidence
+            }
+            for chunk in pdf.chunks
+        ],
+        "processing_time": pdf.processing_time
+    }
+
+@app.get("/pdf/{pdf_id}")
+async def get_pdf_summary(pdf_id: str):
+    """Get summary information about a processed PDF"""
+    if pdf_id not in uploaded_pdfs:
+        raise HTTPException(status_code=404, detail="PDF not found")
+    
+    pdf = uploaded_pdfs[pdf_id]
+    return {
+        "pdf_id": pdf_id,
+        "filename": pdf.filename,
+        "total_pages": pdf.total_pages,
+        "chunks": len(pdf.chunks),
+        "processing_time": pdf.processing_time
+    }
+
+@app.get("/pdf/{pdf_id}/page/{page_num}")
+async def get_pdf_page(pdf_id: str, page_num: int):
+    """Get a specific page image with optional bounding box overlays"""
+    if pdf_id not in uploaded_pdfs:
+        raise HTTPException(status_code=404, detail="PDF not found")
+    
+    pdf = uploaded_pdfs[pdf_id]
+    
+    if page_num >= len(pdf.page_images) or page_num < 0:
+        raise HTTPException(status_code=404, detail="Page not found")
+    
+    # Get chunks for this page
+    page_chunks = [chunk for chunk in pdf.chunks if chunk.page_number == page_num]
+    
+    return {
+        "pdf_id": pdf_id,
+        "page_number": page_num,
+        "image_base64": pdf.page_images[page_num],
+        "chunks": [
+            {
+                "chunk_id": chunk.chunk_id,
+                "text": chunk.text[:200] + "..." if len(chunk.text) > 200 else chunk.text,
+                "bbox": chunk.bbox.to_dict(),
+                "confidence": chunk.confidence
+            }
+            for chunk in page_chunks
+        ]
+    }
 
 # Health endpoint
 @app.get("/healthz")
@@ -1346,6 +1332,9 @@ presidio-analyzer==2.2.359
 presidio-anonymizer==2.2.359
 spacy==3.8.2
 
+# PDF Processing
+PyMuPDF==1.24.14
+
 
 
 ================================================
@@ -1377,7 +1366,8 @@ AGENT_TYPES = [
     "contracts",
     "devcopilot",
     "carecredit",
-    "narrator"
+    "narrator",
+    "imagegen"
 ]
 
 def route(message: str) -> Dict[str, any]:
@@ -1403,6 +1393,7 @@ Agent Categories:
 - contracts: Contract terms, agreements, legal documents, merchant agreements
 - devcopilot: Technical support, API questions, integration help, developer tools
 - carecredit: Healthcare financing, medical payments, care credit specific queries
+- imagegen: Image generation, create picture, draw image, visual content requests
 - narrator: General conversation, greetings, small talk, unclear intent
 
 Respond with ONLY a JSON object in this exact format:
@@ -1498,6 +1489,7 @@ def get_agent_description(agent_type: str) -> str:
         "contracts": "Manages contract terms, agreements, and legal documents",
         "devcopilot": "Provides technical support and developer assistance",
         "carecredit": "Handles healthcare financing and medical payment queries",
+        "imagegen": "Generates images and visual content from text descriptions",
         "narrator": "Manages general conversation and unclear intents"
     }
     
@@ -1576,6 +1568,10 @@ def _keyword_based_routing(message: str) -> Dict[str, any]:
         "offer": [
             "offer", "promotion", "deal", "discount", "sale", "special",
             "limited time", "bonus"
+        ],
+        "imagegen": [
+            "generate image", "create picture", "draw", "make image", "visualize",
+            "render", "picture of", "image of", "show me", "design"
         ]
     }
     
@@ -5832,6 +5828,336 @@ if __name__ == "__main__":
     success = test_dispute_copilot()
     print(f"\n{'🎉 All tests passed!' if success else '⚠️ Some tests failed.'}")
 
+
+
+================================================
+FILE: app/agents/imagegen.py
+================================================
+"""
+ImageGen - AI Image Generation Agent
+Creates images using Gemini's native image generation capabilities
+"""
+
+import logging
+import base64
+from io import BytesIO
+from typing import Dict, Any, Optional, List
+from dataclasses import dataclass
+from PIL import Image
+
+from google import genai
+from google.genai import types
+from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
+
+@dataclass
+class GeneratedImage:
+    """Generated image with metadata"""
+    image_data: bytes
+    format: str
+    description: str
+    prompt: str
+    base64_data: str
+
+class ImageGenRequest(BaseModel):
+    prompt: str
+    include_text: bool = True
+    style_hints: Optional[List[str]] = None
+
+class ImageGenResponse(BaseModel):
+    success: bool
+    prompt: str
+    generated_text: Optional[str] = None
+    image_base64: Optional[str] = None
+    image_format: str = "PNG"
+    error_message: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+class ImageGenAgent:
+    """
+    AI Image Generation Agent using Gemini's native capabilities
+    """
+    
+    def __init__(self, api_key: Optional[str] = None):
+        """Initialize ImageGen agent"""
+        self.client = None
+        self.model_name = "gemini-2.0-flash-preview-image-generation"
+        
+        try:
+            import os
+            api_key = api_key or os.getenv("GOOGLE_API_KEY")
+            if not api_key:
+                raise ValueError("Google API key is required for image generation")
+            
+            self.client = genai.Client(api_key=api_key)
+            logger.info("ImageGen agent initialized successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize ImageGen agent: {e}")
+            raise
+    
+    def generate_image(self, prompt: str, include_text: bool = True, 
+                      style_hints: Optional[List[str]] = None) -> ImageGenResponse:
+        """
+        Generate an image based on the text prompt
+        
+        Args:
+            prompt: Text description of the image to generate
+            include_text: Whether to include descriptive text with the image
+            style_hints: Optional style hints to improve generation
+            
+        Returns:
+            ImageGenResponse with generated image and metadata
+        """
+        try:
+            logger.info(f"Generating image for prompt: {prompt[:100]}...")
+            
+            # Enhance prompt with style hints if provided
+            enhanced_prompt = self._enhance_prompt(prompt, style_hints)
+            
+            # Configure generation parameters
+            config = types.GenerateContentConfig(
+                response_modalities=['IMAGE'] + (['TEXT'] if include_text else [])
+            )
+            
+            # Generate content using Gemini
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=enhanced_prompt,
+                config=config
+            )
+            
+            # Process the response
+            generated_text = None
+            generated_image = None
+            
+            if response.candidates and len(response.candidates) > 0:
+                candidate = response.candidates[0]
+                
+                for part in candidate.content.parts:
+                    if part.text is not None and include_text:
+                        generated_text = part.text
+                    elif part.inline_data is not None:
+                        # Convert image data to base64
+                        image_data = part.inline_data.data
+                        image_base64 = base64.b64encode(image_data).decode('utf-8')
+                        
+                        # Create PIL image for validation
+                        image = Image.open(BytesIO(image_data))
+                        
+                        generated_image = GeneratedImage(
+                            image_data=image_data,
+                            format="PNG",
+                            description=generated_text or prompt,
+                            prompt=enhanced_prompt,
+                            base64_data=image_base64
+                        )
+                        
+                        logger.info(f"Successfully generated {image.size[0]}x{image.size[1]} image")
+            
+            if generated_image:
+                return ImageGenResponse(
+                    success=True,
+                    prompt=enhanced_prompt,
+                    generated_text=generated_text,
+                    image_base64=generated_image.base64_data,
+                    image_format=generated_image.format,
+                    metadata={
+                        "model": self.model_name,
+                        "original_prompt": prompt,
+                        "enhanced_prompt": enhanced_prompt,
+                        "include_text": include_text,
+                        "style_hints": style_hints
+                    }
+                )
+            else:
+                return ImageGenResponse(
+                    success=False,
+                    prompt=enhanced_prompt,
+                    error_message="No image was generated in the response"
+                )
+                
+        except Exception as e:
+            logger.error(f"Error generating image: {e}")
+            return ImageGenResponse(
+                success=False,
+                prompt=prompt,
+                error_message=str(e)
+            )
+    
+    def _enhance_prompt(self, prompt: str, style_hints: Optional[List[str]] = None) -> str:
+        """
+        Enhance the prompt with style hints and quality improvements
+        
+        Args:
+            prompt: Original prompt
+            style_hints: Optional style hints
+            
+        Returns:
+            Enhanced prompt string
+        """
+        enhanced = prompt
+        
+        # Add style hints if provided
+        if style_hints:
+            style_text = ", ".join(style_hints)
+            enhanced = f"{enhanced}, {style_text}"
+        
+        # Add default quality enhancers if not already present
+        quality_terms = ["high quality", "detailed", "professional", "4k", "8k", "hd"]
+        if not any(term in enhanced.lower() for term in quality_terms):
+            enhanced = f"{enhanced}, high quality, detailed"
+        
+        # Add artistic style guidance if none specified
+        style_terms = ["photorealistic", "digital art", "painting", "3d render", "concept art", "illustration"]
+        if not any(term in enhanced.lower() for term in style_terms):
+            enhanced = f"{enhanced}, digital art"
+        
+        return enhanced
+    
+    def process_request(self, request: ImageGenRequest) -> ImageGenResponse:
+        """
+        Process an image generation request
+        
+        Args:
+            request: ImageGenRequest object
+            
+        Returns:
+            ImageGenResponse with results
+        """
+        return self.generate_image(
+            prompt=request.prompt,
+            include_text=request.include_text,
+            style_hints=request.style_hints
+        )
+
+# Utility functions for image handling
+def save_generated_image(image_response: ImageGenResponse, 
+                        filename: Optional[str] = None) -> Optional[str]:
+    """
+    Save a generated image to disk
+    
+    Args:
+        image_response: ImageGenResponse with image data
+        filename: Optional filename, will auto-generate if not provided
+        
+    Returns:
+        Saved filename or None if failed
+    """
+    try:
+        if not image_response.success or not image_response.image_base64:
+            return None
+        
+        # Generate filename if not provided
+        if not filename:
+            import time
+            timestamp = int(time.time())
+            filename = f"generated_image_{timestamp}.{image_response.image_format.lower()}"
+        
+        # Decode and save image
+        image_data = base64.b64decode(image_response.image_base64)
+        image = Image.open(BytesIO(image_data))
+        image.save(filename)
+        
+        logger.info(f"Saved generated image to {filename}")
+        return filename
+        
+    except Exception as e:
+        logger.error(f"Error saving image: {e}")
+        return None
+
+def get_image_data_uri(image_response: ImageGenResponse) -> Optional[str]:
+    """
+    Get data URI for displaying image in HTML
+    
+    Args:
+        image_response: ImageGenResponse with image data
+        
+    Returns:
+        Data URI string or None if failed
+    """
+    try:
+        if not image_response.success or not image_response.image_base64:
+            return None
+        
+        format_lower = image_response.image_format.lower()
+        return f"data:image/{format_lower};base64,{image_response.image_base64}"
+        
+    except Exception as e:
+        logger.error(f"Error creating data URI: {e}")
+        return None
+
+# Test cases for ImageGen agent
+def test_imagegen():
+    """Test ImageGen agent with various prompts"""
+    print("🎨 Testing ImageGen Agent")
+    print("=" * 40)
+    
+    try:
+        agent = ImageGenAgent()
+        
+        test_cases = [
+            {
+                "name": "Simple Object",
+                "prompt": "A red apple on a wooden table",
+                "expected_success": True
+            },
+            {
+                "name": "Complex Scene", 
+                "prompt": "A futuristic city with flying cars and neon lights at night",
+                "style_hints": ["cyberpunk", "neon", "cinematic"],
+                "expected_success": True
+            },
+            {
+                "name": "Fantasy Character",
+                "prompt": "A wizard casting a spell in an enchanted forest",
+                "style_hints": ["fantasy art", "magical", "mystical"],
+                "expected_success": True
+            }
+        ]
+        
+        passed = 0
+        total = len(test_cases)
+        
+        for i, case in enumerate(test_cases, 1):
+            print(f"{i}. {case['name']}")
+            print(f"   Prompt: '{case['prompt']}'")
+            
+            try:
+                result = agent.generate_image(
+                    prompt=case["prompt"],
+                    style_hints=case.get("style_hints")
+                )
+                
+                success = result.success == case["expected_success"]
+                
+                if success and result.success:
+                    print(f"   ✅ PASS - Image generated successfully")
+                    if result.generated_text:
+                        print(f"   📝 Description: {result.generated_text[:100]}...")
+                    print(f"   🖼️ Format: {result.image_format}")
+                    passed += 1
+                elif success:
+                    print(f"   ✅ PASS - Expected behavior matched")
+                    passed += 1
+                else:
+                    print(f"   ❌ FAIL - {result.error_message}")
+                    
+            except Exception as e:
+                print(f"   ❌ FAIL - Exception: {str(e)}")
+            
+            print()
+        
+        print(f"📊 ImageGen Results: {passed}/{total} tests passed")
+        return passed == total
+        
+    except Exception as e:
+        print(f"❌ Failed to initialize ImageGen agent: {e}")
+        return False
+
+if __name__ == "__main__":
+    test_imagegen()
 
 
 ================================================
@@ -11023,6 +11349,606 @@ class RAGPipeline:
 
 
 ================================================
+FILE: app/services/pdf_processor.py
+================================================
+"""
+PDF Processing Service with Landing AI Document Extraction
+Processes uploaded PDFs and extracts structured content with bounding boxes
+"""
+
+import os
+import logging
+import base64
+import tempfile
+from typing import List, Dict, Any, Optional, Tuple
+from dataclasses import dataclass
+from pathlib import Path
+import json
+import time
+
+import requests
+from PIL import Image
+import fitz  # PyMuPDF
+from haystack import Document
+
+try:
+    from agentic_doc.parse import parse
+    AGENTIC_DOC_AVAILABLE = True
+except ImportError:
+    AGENTIC_DOC_AVAILABLE = False
+    logging.warning("agentic_doc not available - falling back to REST API")
+
+logger = logging.getLogger(__name__)
+
+@dataclass
+class BoundingBox:
+    """Bounding box coordinates"""
+    x: float
+    y: float
+    width: float
+    height: float
+    page: int
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "x": self.x,
+            "y": self.y,
+            "width": self.width,
+            "height": self.height,
+            "page": self.page
+        }
+
+@dataclass
+class PDFChunk:
+    """Extracted PDF chunk with location and content"""
+    text: str
+    bbox: BoundingBox
+    page_number: int
+    chunk_id: str
+    confidence: float = 1.0
+    metadata: Optional[Dict[str, Any]] = None
+    
+    def to_document(self, pdf_name: str) -> Document:
+        """Convert to Haystack document"""
+        return Document(
+            content=self.text,
+            meta={
+                "source": pdf_name,
+                "type": "pdf",
+                "chunk_id": self.chunk_id,
+                "page_number": self.page_number,
+                "bbox": self.bbox.to_dict(),
+                "confidence": self.confidence,
+                "metadata": self.metadata or {}
+            }
+        )
+
+@dataclass
+class ProcessedPDF:
+    """Complete processed PDF with chunks and page images"""
+    filename: str
+    chunks: List[PDFChunk]
+    page_images: List[str]  # Base64 encoded page images
+    total_pages: int
+    file_size: int
+    processing_time: float
+    
+class LandingAIPDFProcessor:
+    """
+    PDF processor using Landing AI's Document Extraction API
+    """
+    
+    def __init__(self, api_key: Optional[str] = None):
+        self.api_key = api_key or os.getenv("VISION_AGENT_API_KEY")
+        if not self.api_key:
+            logger.warning("Vision Agent API key not found - using fallback processing")
+        
+        self.base_url = "https://predict.app.landing.ai/inference/v1"
+        self.headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.api_key}" if self.api_key else ""
+        }
+    
+    def process_pdf(self, pdf_path: str, chunk_strategy: str = "semantic") -> ProcessedPDF:
+        """
+        Process PDF using Landing AI or fallback method
+        
+        Args:
+            pdf_path: Path to PDF file
+            chunk_strategy: Strategy for chunking ("semantic", "page", "paragraph")
+            
+        Returns:
+            ProcessedPDF with extracted chunks and metadata
+        """
+        start_time = time.time()
+        pdf_name = Path(pdf_path).name
+        
+        try:
+            # Try Landing AI SDK first if available and API key is set
+            if AGENTIC_DOC_AVAILABLE and self.api_key:
+                logger.info(f"Processing {pdf_name} with Landing AI SDK...")
+                result = self._process_with_agentic_doc(pdf_path, chunk_strategy)
+            elif self.api_key:
+                logger.info(f"Processing {pdf_name} with Landing AI REST API...")
+                result = self._process_with_landing_ai(pdf_path, chunk_strategy)
+            else:
+                logger.info(f"Processing {pdf_name} with fallback method...")
+                result = self._process_with_fallback(pdf_path, chunk_strategy)
+            
+            processing_time = time.time() - start_time
+            result.processing_time = processing_time
+            
+            logger.info(f"Successfully processed {pdf_name}: {len(result.chunks)} chunks, "
+                       f"{result.total_pages} pages in {processing_time:.2f}s")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error processing PDF {pdf_name}: {e}")
+            # Fallback to basic processing
+            return self._process_with_fallback(pdf_path, chunk_strategy)
+    
+    def _process_with_agentic_doc(self, pdf_path: str, chunk_strategy: str) -> ProcessedPDF:
+        """Process PDF using Landing AI agentic_doc SDK"""
+        
+        # Set API key as environment variable for the SDK
+        if self.api_key:
+            os.environ["VISION_AGENT_API_KEY"] = self.api_key
+        
+        # First, extract page images for visualization
+        page_images = self._extract_page_images(pdf_path)
+        
+        try:
+            # Parse PDF using agentic_doc
+            logger.info(f"Calling agentic_doc.parse on {pdf_path}")
+            result = parse(pdf_path)
+            
+            if not result:
+                raise Exception("No results from agentic_doc.parse")
+            
+            # Get the first document result
+            doc_result = result[0]
+            
+            # Extract chunks from the result
+            chunks = []
+            if hasattr(doc_result, 'chunks') and doc_result.chunks:
+                # Open PDF once for all coordinate conversions
+                pdf_doc = fitz.open(pdf_path)
+                scale_factor = 2  # We render images at 2x scale
+                
+                try:
+                    for i, chunk_data in enumerate(doc_result.chunks):
+                        # Get text from chunk
+                        text = chunk_data.text if hasattr(chunk_data, 'text') else str(chunk_data)
+                        
+                        # Extract grounding information for bounding boxes
+                        if hasattr(chunk_data, 'grounding') and chunk_data.grounding:
+                            ground = chunk_data.grounding[0]  # Take first grounding
+                            page_num = ground.page
+                            box = ground.box
+                            
+                            # Get page dimensions for coordinate conversion
+                            if page_num < pdf_doc.page_count:
+                                page = pdf_doc[page_num]
+                                page_rect = page.rect
+                                
+                                # Convert normalized coordinates to pixel coordinates
+                                # Landing AI format: l, t, r, b (normalized 0-1)
+                                l = box.l
+                                t = box.t
+                                r = box.r
+                                b = box.b
+                                
+                                # Convert to absolute coordinates with scaling
+                                x = l * page_rect.width * scale_factor
+                                y = t * page_rect.height * scale_factor
+                                width = (r - l) * page_rect.width * scale_factor
+                                height = (b - t) * page_rect.height * scale_factor
+                                
+                                bbox = BoundingBox(
+                                    x=x,
+                                    y=y,
+                                    width=width,
+                                    height=height,
+                                    page=page_num
+                                )
+                            else:
+                                # Invalid page number - use first page
+                                page = pdf_doc[0]
+                                page_rect = page.rect
+                                bbox = BoundingBox(
+                                    x=0, y=0,
+                                    width=page_rect.width * scale_factor,
+                                    height=page_rect.height * scale_factor,
+                                    page=0
+                                )
+                                page_num = 0
+                        else:
+                            # No grounding info - use whole first page
+                            page = pdf_doc[0]
+                            page_rect = page.rect
+                            bbox = BoundingBox(
+                                x=0, y=0,
+                                width=page_rect.width * scale_factor,
+                                height=page_rect.height * scale_factor,
+                                page=0
+                            )
+                            page_num = 0
+                        
+                        # Create chunk with proper confidence handling
+                        confidence = 1.0
+                        if hasattr(chunk_data, 'confidence') and chunk_data.confidence is not None:
+                            confidence = float(chunk_data.confidence)
+                        
+                        chunk = PDFChunk(
+                            text=text,
+                            bbox=bbox,
+                            page_number=page_num,
+                            chunk_id=f"chunk_{i}",
+                            confidence=confidence,
+                            metadata={}
+                        )
+                        chunks.append(chunk)
+                
+                finally:
+                    pdf_doc.close()
+            
+            # Get total pages from the PDF
+            doc = fitz.open(pdf_path)
+            total_pages = doc.page_count
+            doc.close()
+            
+            return ProcessedPDF(
+                filename=Path(pdf_path).name,
+                chunks=chunks,
+                page_images=page_images,
+                total_pages=total_pages,
+                file_size=os.path.getsize(pdf_path),
+                processing_time=0  # Will be set by caller
+            )
+            
+        except Exception as e:
+            logger.error(f"agentic_doc processing failed: {e}")
+            raise
+
+    def _process_with_landing_ai(self, pdf_path: str, chunk_strategy: str) -> ProcessedPDF:
+        """Process PDF using Landing AI API"""
+        
+        # First, extract page images for visualization
+        page_images = self._extract_page_images(pdf_path)
+        
+        # Encode PDF for API
+        with open(pdf_path, 'rb') as f:
+            pdf_base64 = base64.b64encode(f.read()).decode('utf-8')
+        
+        # Landing AI Document Extraction API call
+        payload = {
+            "file_content": pdf_base64,
+            "file_type": "pdf",
+            "extraction_config": {
+                "chunk_strategy": chunk_strategy,
+                "include_bboxes": True,
+                "include_confidence": True,
+                "page_images": True
+            }
+        }
+        
+        try:
+            response = requests.post(
+                f"{self.base_url}/documents/extract",
+                headers=self.headers,
+                json=payload,
+                timeout=60
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                return self._parse_landing_ai_response(data, page_images, pdf_path)
+            else:
+                logger.error(f"Landing AI API error: {response.status_code} - {response.text}")
+                raise Exception(f"API returned {response.status_code}")
+                
+        except Exception as e:
+            logger.error(f"Landing AI processing failed: {e}")
+            raise
+    
+    def _process_with_fallback(self, pdf_path: str, chunk_strategy: str) -> ProcessedPDF:
+        """Fallback processing using PyMuPDF"""
+        
+        doc = fitz.open(pdf_path)
+        chunks = []
+        page_images = []
+        
+        try:
+            # Extract page images
+            for page_num in range(doc.page_count):
+                page = doc[page_num]
+                pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))  # 2x scale for better quality
+                img_data = pix.tobytes("png")
+                img_base64 = base64.b64encode(img_data).decode('utf-8')
+                page_images.append(img_base64)
+            
+            # Extract text chunks based on strategy
+            if chunk_strategy == "page":
+                chunks = self._chunk_by_page(doc)
+            elif chunk_strategy == "paragraph":
+                chunks = self._chunk_by_paragraph(doc)
+            else:  # semantic (default)
+                chunks = self._chunk_semantically(doc)
+            
+            return ProcessedPDF(
+                filename=Path(pdf_path).name,
+                chunks=chunks,
+                page_images=page_images,
+                total_pages=doc.page_count,
+                file_size=os.path.getsize(pdf_path),
+                processing_time=0  # Will be set by caller
+            )
+            
+        finally:
+            doc.close()
+    
+    def _extract_page_images(self, pdf_path: str) -> List[str]:
+        """Extract page images as base64 strings"""
+        doc = fitz.open(pdf_path)
+        images = []
+        
+        try:
+            for page_num in range(doc.page_count):
+                page = doc[page_num]
+                pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+                img_data = pix.tobytes("png")
+                img_base64 = base64.b64encode(img_data).decode('utf-8')
+                images.append(img_base64)
+        finally:
+            doc.close()
+            
+        return images
+    
+    def _parse_landing_ai_response(self, data: Dict[str, Any], 
+                                  page_images: List[str], pdf_path: str) -> ProcessedPDF:
+        """Parse Landing AI API response into ProcessedPDF"""
+        
+        chunks = []
+        extracted_chunks = data.get("chunks", [])
+        
+        # Get page dimensions for coordinate conversion
+        doc = fitz.open(pdf_path)
+        
+        try:
+            for i, chunk_data in enumerate(extracted_chunks):
+                # Landing AI uses normalized coordinates in 'grounding' field
+                grounding = chunk_data.get("grounding", [])
+                if not grounding:
+                    continue
+                
+                ground = grounding[0]  # Take first grounding
+                page_num = ground.get("page", 0)
+                box = ground.get("box", {})
+                
+                # Get page dimensions (PDF uses 2x scale for images)
+                page = doc[page_num]
+                page_rect = page.rect
+                scale_factor = 2  # We render images at 2x scale
+                
+                # Convert normalized coordinates to pixel coordinates
+                # Landing AI format: l, t, r, b (normalized 0-1)
+                l = box.get("l", 0)  # Left
+                t = box.get("t", 0)  # Top
+                r = box.get("r", 0)  # Right  
+                b = box.get("b", 0)  # Bottom
+                
+                # Convert to absolute coordinates with scaling
+                x = l * page_rect.width * scale_factor
+                y = t * page_rect.height * scale_factor
+                width = (r - l) * page_rect.width * scale_factor
+                height = (b - t) * page_rect.height * scale_factor
+                
+                bbox = BoundingBox(
+                    x=x,
+                    y=y,
+                    width=width,
+                    height=height,
+                    page=page_num
+                )
+                
+                chunk = PDFChunk(
+                    text=chunk_data.get("text", ""),
+                    bbox=bbox,
+                    page_number=page_num,
+                    chunk_id=f"chunk_{i}",
+                    confidence=chunk_data.get("confidence", 1.0),
+                    metadata=chunk_data.get("metadata", {})
+                )
+                chunks.append(chunk)
+        
+        finally:
+            doc.close()
+        
+        return ProcessedPDF(
+            filename=Path(pdf_path).name,
+            chunks=chunks,
+            page_images=page_images,
+            total_pages=data.get("total_pages", len(page_images)),
+            file_size=os.path.getsize(pdf_path),
+            processing_time=0
+        )
+    
+    def _chunk_by_page(self, doc: fitz.Document) -> List[PDFChunk]:
+        """Chunk PDF by page"""
+        chunks = []
+        
+        for page_num in range(doc.page_count):
+            page = doc[page_num]
+            text = page.get_text()
+            
+            if text.strip():
+                # Get page dimensions for bounding box
+                rect = page.rect
+                bbox = BoundingBox(
+                    x=0, y=0,
+                    width=rect.width,
+                    height=rect.height,
+                    page=page_num
+                )
+                
+                chunk = PDFChunk(
+                    text=text.strip(),
+                    bbox=bbox,
+                    page_number=page_num,
+                    chunk_id=f"page_{page_num}",
+                    confidence=1.0
+                )
+                chunks.append(chunk)
+        
+        return chunks
+    
+    def _chunk_by_paragraph(self, doc: fitz.Document) -> List[PDFChunk]:
+        """Chunk PDF by paragraphs using text blocks"""
+        chunks = []
+        chunk_id = 0
+        
+        for page_num in range(doc.page_count):
+            page = doc[page_num]
+            blocks = page.get_text("dict")["blocks"]
+            
+            for block in blocks:
+                if "lines" in block:  # Text block
+                    text_parts = []
+                    
+                    for line in block["lines"]:
+                        for span in line["spans"]:
+                            text_parts.append(span["text"])
+                    
+                    text = "".join(text_parts).strip()
+                    if text and len(text) > 20:  # Minimum length filter
+                        
+                        # Create bounding box from block (apply 2x scale to match image rendering)
+                        scale_factor = 2
+                        bbox = BoundingBox(
+                            x=block["bbox"][0] * scale_factor,
+                            y=block["bbox"][1] * scale_factor,
+                            width=(block["bbox"][2] - block["bbox"][0]) * scale_factor,
+                            height=(block["bbox"][3] - block["bbox"][1]) * scale_factor,
+                            page=page_num
+                        )
+                        
+                        chunk = PDFChunk(
+                            text=text,
+                            bbox=bbox,
+                            page_number=page_num,
+                            chunk_id=f"para_{chunk_id}",
+                            confidence=0.9
+                        )
+                        chunks.append(chunk)
+                        chunk_id += 1
+        
+        return chunks
+    
+    def _chunk_semantically(self, doc: fitz.Document) -> List[PDFChunk]:
+        """Semantic chunking - group related paragraphs"""
+        # For now, use paragraph chunking with larger minimum sizes
+        paragraphs = self._chunk_by_paragraph(doc)
+        
+        # Merge small adjacent paragraphs
+        merged_chunks = []
+        current_chunk = None
+        
+        for para in paragraphs:
+            if current_chunk is None:
+                current_chunk = para
+            elif (len(current_chunk.text) < 300 and 
+                  para.page_number == current_chunk.page_number):
+                # Merge with previous chunk
+                current_chunk.text += "\n\n" + para.text
+                # Expand bounding box
+                current_chunk.bbox.width = max(
+                    current_chunk.bbox.x + current_chunk.bbox.width,
+                    para.bbox.x + para.bbox.width
+                ) - current_chunk.bbox.x
+                current_chunk.bbox.height = max(
+                    current_chunk.bbox.y + current_chunk.bbox.height,
+                    para.bbox.y + para.bbox.height
+                ) - current_chunk.bbox.y
+            else:
+                merged_chunks.append(current_chunk)
+                current_chunk = para
+        
+        if current_chunk:
+            merged_chunks.append(current_chunk)
+        
+        return merged_chunks
+
+def save_processed_pdf(processed_pdf: ProcessedPDF, 
+                      output_dir: str = "processed_pdfs") -> str:
+    """Save processed PDF data to disk for caching"""
+    
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Create filename from original
+    base_name = Path(processed_pdf.filename).stem
+    output_file = Path(output_dir) / f"{base_name}_processed.json"
+    
+    # Convert to serializable format
+    data = {
+        "filename": processed_pdf.filename,
+        "chunks": [
+            {
+                "text": chunk.text,
+                "bbox": chunk.bbox.to_dict(),
+                "page_number": chunk.page_number,
+                "chunk_id": chunk.chunk_id,
+                "confidence": chunk.confidence,
+                "metadata": chunk.metadata
+            }
+            for chunk in processed_pdf.chunks
+        ],
+        "page_images": processed_pdf.page_images,
+        "total_pages": processed_pdf.total_pages,
+        "file_size": processed_pdf.file_size,
+        "processing_time": processed_pdf.processing_time
+    }
+    
+    with open(output_file, 'w') as f:
+        json.dump(data, f, indent=2)
+    
+    logger.info(f"Saved processed PDF to {output_file}")
+    return str(output_file)
+
+# Test function
+def test_pdf_processor():
+    """Test PDF processing with sample file"""
+    print("🔍 Testing PDF Processor")
+    print("=" * 40)
+    
+    processor = LandingAIPDFProcessor()
+    
+    # Create a simple test PDF if none exists
+    test_file = "test_document.pdf"
+    
+    try:
+        result = processor.process_pdf(test_file, chunk_strategy="semantic")
+        
+        print(f"✅ Processed: {result.filename}")
+        print(f"   Pages: {result.total_pages}")
+        print(f"   Chunks: {len(result.chunks)}")
+        print(f"   Processing time: {result.processing_time:.2f}s")
+        
+        for i, chunk in enumerate(result.chunks[:3]):
+            print(f"   Chunk {i}: {chunk.text[:50]}...")
+            print(f"     Page: {chunk.page_number}, BBox: {chunk.bbox.to_dict()}")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Test failed: {e}")
+        return False
+
+if __name__ == "__main__":
+    test_pdf_processor()
+
+
+================================================
 FILE: app/tools/__init__.py
 ================================================
 # Tools Package
@@ -11956,6 +12882,13 @@ FILE: app/ui/modern.html
                 color: 'text-orange-600',
                 example: 'Why did spend drop after 2025-07-31?',
                 tooltip: 'Portfolio analytics and business insights'
+            },
+            'imagegen': {
+                name: 'ImageGen',
+                icon: 'fa-image',
+                color: 'text-violet-600',
+                example: 'Create a futuristic city with flying cars and neon lights',
+                tooltip: 'AI-powered image generation from text descriptions'
             }
         };
 
@@ -11969,6 +12902,8 @@ FILE: app/ui/modern.html
             const [rightPanel, setRightPanel] = useState('citations');
             const [citations, setCitations] = useState([]);
             const [toolTrace, setToolTrace] = useState([]);
+            const [uploadedPdfs, setUploadedPdfs] = useState([]);
+            const [selectedPdfChunk, setSelectedPdfChunk] = useState(null);
             const messagesEndRef = useRef(null);
 
             useEffect(() => {
@@ -11992,6 +12927,8 @@ FILE: app/ui/modern.html
                     const endpoint = selectedAgent === 'smart' ? '/chat' : `/agent/${selectedAgent}`;
                     const payload = selectedAgent === 'smart' 
                         ? { message: inputText, allow_tavily: allowTavily }
+                        : selectedAgent === 'imagegen'
+                        ? { prompt: inputText, include_text: true, style_hints: [] }
                         : { query: inputText };
 
                     const response = await fetch(endpoint, {
@@ -12011,7 +12948,9 @@ FILE: app/ui/modern.html
                         sources: data.sources || [],
                         used_tavily: data.used_tavily || false,
                         timestamp: new Date(),
-                        latency: Math.random() * 2000 + 500 // Mock latency
+                        latency: Math.random() * 2000 + 500, // Mock latency
+                        image_data: data.image_data,
+                        image_format: data.image_format
                     };
 
                     setMessages(prev => [...prev, assistantMessage]);
@@ -12046,6 +12985,69 @@ FILE: app/ui/modern.html
                 setMessages([]);
                 setCitations([]);
                 setToolTrace([]);
+            };
+
+            const uploadPdf = async (file) => {
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                try {
+                    const response = await fetch('/upload/pdf', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        console.error(`Upload failed with status ${response.status}:`, errorText);
+                        throw new Error(`Upload failed: ${response.status} - ${errorText}`);
+                    }
+                    
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        setUploadedPdfs(prev => [...prev, result]);
+                        
+                        // Get first page thumbnail for display
+                        let thumbnailImage = null;
+                        try {
+                            const pageResponse = await fetch(`/pdf/${result.pdf_id}/page/0`);
+                            if (pageResponse.ok) {
+                                const pageData = await pageResponse.json();
+                                thumbnailImage = pageData.image_base64;
+                            }
+                        } catch (error) {
+                            console.error('Failed to fetch PDF thumbnail:', error);
+                        }
+                        
+                        // Add upload notification to chat with PDF data
+                        const uploadMessage = {
+                            id: Date.now(),
+                            type: 'pdf_upload',
+                            content: `📄 Uploaded and processed: ${result.filename} (${result.chunks_extracted} chunks from ${result.total_pages} pages)`,
+                            timestamp: new Date(),
+                            pdfData: result,
+                            thumbnail: thumbnailImage
+                        };
+                        setMessages(prev => [...prev, uploadMessage]);
+                        
+                        return result;
+                    } else {
+                        throw new Error('Upload failed');
+                    }
+                } catch (error) {
+                    console.error('PDF upload error:', error);
+                    
+                    const errorMessage = {
+                        id: Date.now(),
+                        type: 'error',
+                        content: `Failed to upload PDF: ${error.message}`,
+                        timestamp: new Date()
+                    };
+                    setMessages(prev => [...prev, errorMessage]);
+                    
+                    throw error;
+                }
             };
 
             const exportJSON = () => {
@@ -12088,8 +13090,12 @@ FILE: app/ui/modern.html
                             setInputText={setInputText}
                             selectedAgent={selectedAgent}
                             allowTavily={allowTavily}
+                            setAllowTavily={setAllowTavily}
                             onSendMessage={sendMessage}
                             messagesEndRef={messagesEndRef}
+                            uploadedPdfs={uploadedPdfs}
+                            setUploadedPdfs={setUploadedPdfs}
+                            uploadPdf={uploadPdf}
                         />
 
                         {/* Right Inspector */}
@@ -12098,6 +13104,9 @@ FILE: app/ui/modern.html
                             setActivePanel={setRightPanel}
                             citations={citations}
                             toolTrace={toolTrace}
+                            uploadedPdfs={uploadedPdfs}
+                            selectedPdfChunk={selectedPdfChunk}
+                            setSelectedPdfChunk={setSelectedPdfChunk}
                         />
                     </div>
                 </div>
@@ -12214,16 +13223,74 @@ FILE: app/ui/modern.html
         }
 
         // Chat Pane Component
-        function ChatPane({ messages, isLoading, inputText, setInputText, selectedAgent, allowTavily, onSendMessage, messagesEndRef }) {
+        function ChatPane({ messages, isLoading, inputText, setInputText, selectedAgent, allowTavily, setAllowTavily, onSendMessage, messagesEndRef, uploadedPdfs, setUploadedPdfs, uploadPdf }) {
+            const [isDragOver, setIsDragOver] = useState(false);
+            
             const handleKeyPress = (e) => {
-                if (e.key === 'Enter' && (e.shiftKey || e.ctrlKey)) {
-                    e.preventDefault();
-                    onSendMessage();
+                if (e.key === 'Enter') {
+                    if (e.shiftKey || e.ctrlKey) {
+                        // Allow new line on Shift+Enter or Ctrl+Enter
+                        return;
+                    } else {
+                        // Send message on plain Enter
+                        e.preventDefault();
+                        if (inputText.trim()) {
+                            onSendMessage();
+                        }
+                    }
+                }
+            };
+
+            const handleDragOver = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsDragOver(true);
+            };
+
+            const handleDragLeave = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsDragOver(false);
+            };
+
+            const handleDrop = async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsDragOver(false);
+
+                const files = Array.from(e.dataTransfer.files);
+                console.log('Dropped files:', files.map(f => ({ name: f.name, type: f.type, size: f.size })));
+                
+                const pdfFiles = files.filter(file => 
+                    file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
+                );
+
+                if (pdfFiles.length === 0) {
+                    alert('Please drop PDF files only.');
+                    return;
+                }
+
+                console.log('Processing PDF files:', pdfFiles.map(f => f.name));
+
+                // Upload each PDF file
+                for (const file of pdfFiles) {
+                    try {
+                        console.log(`Uploading PDF: ${file.name}`);
+                        await uploadPdf(file);
+                        console.log(`Successfully uploaded: ${file.name}`);
+                    } catch (error) {
+                        console.error(`Error uploading PDF ${file.name}:`, error);
+                    }
                 }
             };
 
             return (
-                <div className="flex-1 flex flex-col bg-white">
+                <div 
+                    className="flex-1 flex flex-col bg-white relative"
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                >
                     {/* Chat Header */}
                     <div className="p-4 border-b border-slate-200">
                         <div className="flex items-center justify-between">
@@ -12274,48 +13341,120 @@ FILE: app/ui/modern.html
                         <div ref={messagesEndRef} />
                     </div>
 
+                    {/* Drag & Drop Overlay */}
+                    {isDragOver && (
+                        <div className="absolute inset-0 bg-teal-500 bg-opacity-10 border-2 border-dashed border-teal-500 flex items-center justify-center z-50">
+                            <div className="bg-white p-6 rounded-lg shadow-lg text-center">
+                                <i className="fas fa-file-pdf text-4xl text-teal-600 mb-2"></i>
+                                <p className="text-lg font-medium text-slate-800 mb-1">Drop PDF files here</p>
+                                <p className="text-sm text-slate-600">Upload documents to analyze and chat about</p>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Composer */}
                     <div className="border-t border-slate-200 p-4">
-                        <div className="flex items-end space-x-3">
-                            <div className="flex-1">
-                                <textarea
-                                    value={inputText}
-                                    onChange={(e) => setInputText(e.target.value)}
-                                    onKeyPress={handleKeyPress}
-                                    placeholder={selectedAgent === 'smart' 
-                                        ? 'Ask to shop + finance, dispute, contracts, APIs, care, or portfolio insights…'
-                                        : `Ask ${AGENTS[selectedAgent].name}...`
-                                    }
-                                    className="w-full px-3 py-2 border border-slate-300 rounded-md resize-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                                    rows={Math.min(inputText.split('\n').length, 4)}
-                                    disabled={isLoading}
-                                />
-                                <div className="flex items-center justify-between mt-2">
-                                    <div className="flex items-center space-x-2">
-                                        {selectedAgent === 'smart' && (
-                                            <label className="flex items-center space-x-1 text-xs text-slate-500">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={allowTavily}
-                                                    onChange={(e) => setAllowTavily(e.target.checked)}
-                                                    className="rounded"
-                                                />
-                                                <span>Use Tavily</span>
-                                            </label>
-                                        )}
-                                    </div>
-                                    <div className="text-xs text-slate-400">
-                                        {inputText.length} chars • Shift+Enter to send
-                                    </div>
+                        {/* PDF Upload Area */}
+                        {uploadedPdfs.length > 0 && (
+                            <div className="mb-3 p-2 bg-slate-50 rounded border border-slate-200">
+                                <div className="text-xs text-slate-600 mb-2">📄 Attached PDFs:</div>
+                                <div className="flex flex-wrap gap-2">
+                                    {uploadedPdfs.map((pdf, index) => (
+                                        <div key={index} className="flex items-center space-x-2 bg-white px-2 py-1 rounded border text-xs">
+                                            <i className="fas fa-file-pdf text-red-600"></i>
+                                            <span>{pdf.filename}</span>
+                                            <span className="text-slate-500">({pdf.chunks_extracted} chunks)</span>
+                                            <button
+                                                onClick={() => setUploadedPdfs(prev => prev.filter((_, i) => i !== index))}
+                                                className="text-slate-400 hover:text-red-600 ml-1"
+                                            >
+                                                <i className="fas fa-times"></i>
+                                            </button>
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
-                            <button
-                                onClick={onSendMessage}
-                                disabled={isLoading || !inputText.trim()}
-                                className="px-4 py-2 bg-teal-600 text-white rounded-md hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                <i className="fas fa-paper-plane"></i>
-                            </button>
+                        )}
+
+                        {/* Input Container */}
+                        <div className="relative bg-white border border-slate-300 rounded-lg focus-within:border-teal-500 focus-within:ring-1 focus-within:ring-teal-500">
+                            <div className="flex items-end">
+                                {/* Plus Button */}
+                                <div className="flex-shrink-0 p-2">
+                                    <label className="cursor-pointer text-slate-500 hover:text-slate-700 transition-colors">
+                                        <input
+                                            type="file"
+                                            accept=".pdf"
+                                            className="hidden"
+                                            onChange={async (e) => {
+                                                const file = e.target.files[0];
+                                                if (file) {
+                                                    try {
+                                                        await uploadPdf(file);
+                                                    } catch (error) {
+                                                        // Error already handled in uploadPdf
+                                                    }
+                                                    e.target.value = ''; // Reset input
+                                                }
+                                            }}
+                                        />
+                                        <div className="w-6 h-6 rounded-full border border-slate-300 flex items-center justify-center hover:bg-slate-50 transition-colors">
+                                            <i className="fas fa-plus text-xs"></i>
+                                        </div>
+                                    </label>
+                                </div>
+
+                                {/* Text Input */}
+                                <div className="flex-1 min-h-[44px]">
+                                    <textarea
+                                        value={inputText}
+                                        onChange={(e) => setInputText(e.target.value)}
+                                        onKeyPress={handleKeyPress}
+                                        placeholder={selectedAgent === 'smart' 
+                                            ? 'Ask about your documents, shop + finance, dispute, contracts...'
+                                            : `Ask ${AGENTS[selectedAgent].name}...`
+                                        }
+                                        className="w-full px-2 py-2 border-0 bg-transparent resize-none focus:outline-none"
+                                        rows={Math.min(inputText.split('\n').length, 4)}
+                                        disabled={isLoading}
+                                    />
+                                </div>
+
+                                {/* Send Button */}
+                                <div className="flex-shrink-0 p-2">
+                                    <button
+                                        onClick={onSendMessage}
+                                        disabled={isLoading || !inputText.trim()}
+                                        className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
+                                            inputText.trim() && !isLoading
+                                                ? 'bg-teal-600 text-white hover:bg-teal-700'
+                                                : 'bg-slate-100 text-slate-400'
+                                        }`}
+                                    >
+                                        <i className="fas fa-paper-plane text-sm"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Footer Info */}
+                        <div className="flex items-center justify-between mt-2">
+                            <div className="flex items-center space-x-4">
+                                {selectedAgent === 'smart' && (
+                                    <label className="flex items-center space-x-1 text-xs text-slate-500">
+                                        <input
+                                            type="checkbox"
+                                            checked={allowTavily}
+                                            onChange={(e) => setAllowTavily(e.target.checked)}
+                                            className="rounded"
+                                        />
+                                        <span>Use Tavily</span>
+                                    </label>
+                                )}
+                            </div>
+                            <div className="text-xs text-slate-400">
+                                {inputText.length} chars • Enter to send • Shift+Enter for new line
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -12340,6 +13479,42 @@ FILE: app/ui/modern.html
                         <div className="bg-red-100 text-red-700 px-4 py-2 rounded-lg max-w-md">
                             <i className="fas fa-exclamation-triangle mr-2"></i>
                             {message.content}
+                        </div>
+                    </div>
+                );
+            }
+
+            if (message.type === 'pdf_upload') {
+                return (
+                    <div className="flex">
+                        <div className="bg-blue-50 border border-blue-200 px-4 py-3 rounded-lg max-w-md">
+                            <div className="flex items-start space-x-3">
+                                {message.thumbnail && (
+                                    <div className="flex-shrink-0">
+                                        <img 
+                                            src={`data:image/png;base64,${message.thumbnail}`} 
+                                            alt="PDF Thumbnail"
+                                            className="w-16 h-20 object-cover rounded border border-slate-200 shadow-sm"
+                                        />
+                                    </div>
+                                )}
+                                <div className="flex-1">
+                                    <div className="flex items-center space-x-2 mb-1">
+                                        <i className="fas fa-file-pdf text-red-600"></i>
+                                        <span className="font-medium text-sm text-slate-800">
+                                            {message.pdfData?.filename}
+                                        </span>
+                                    </div>
+                                    <div className="text-xs text-slate-600 space-y-1">
+                                        <div>📄 {message.pdfData?.total_pages} pages</div>
+                                        <div>🧩 {message.pdfData?.chunks_extracted} chunks extracted</div>
+                                        <div>⚡ Processed in {message.pdfData?.processing_time?.toFixed(2)}s</div>
+                                    </div>
+                                    <div className="text-xs text-slate-500 mt-2">
+                                        Ready for questions about this document
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 );
@@ -12399,6 +13574,57 @@ FILE: app/ui/modern.html
                                 )}
                             </div>
 
+                            {/* Generated Image Display */}
+                            {message.image_data && (
+                                <div className="mt-4">
+                                    <div className="border border-slate-200 rounded-lg overflow-hidden bg-slate-50">
+                                        <div className="p-3 bg-slate-100 border-b border-slate-200">
+                                            <div className="flex items-center justify-between text-sm">
+                                                <div className="flex items-center space-x-2">
+                                                    <i className="fas fa-image text-violet-600"></i>
+                                                    <span className="font-medium text-slate-800">Generated Image</span>
+                                                    <span className="px-2 py-1 text-xs bg-violet-100 text-violet-700 rounded">
+                                                        {message.image_format || 'PNG'}
+                                                    </span>
+                                                </div>
+                                                <button
+                                                    onClick={() => {
+                                                        const link = document.createElement('a');
+                                                        link.download = `generated-image-${Date.now()}.${(message.image_format || 'PNG').toLowerCase()}`;
+                                                        link.href = `data:image/${(message.image_format || 'png').toLowerCase()};base64,${message.image_data}`;
+                                                        link.click();
+                                                    }}
+                                                    className="text-slate-500 hover:text-slate-700"
+                                                    title="Download Image"
+                                                >
+                                                    <i className="fas fa-download"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div className="p-4">
+                                            <img
+                                                src={`data:image/${(message.image_format || 'png').toLowerCase()};base64,${message.image_data}`}
+                                                alt="Generated image"
+                                                className="max-w-full h-auto rounded border border-slate-200 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                                                style={{ maxHeight: '400px', objectFit: 'contain' }}
+                                                onClick={() => {
+                                                    // Open full-size image in new window
+                                                    const newWindow = window.open();
+                                                    newWindow.document.write(`
+                                                        <html>
+                                                            <head><title>Generated Image</title></head>
+                                                            <body style="margin:0; background:#000; display:flex; justify-content:center; align-items:center; min-height:100vh;">
+                                                                <img src="data:image/${(message.image_format || 'png').toLowerCase()};base64,${message.image_data}" style="max-width:100%; max-height:100%; object-fit:contain;" />
+                                                            </body>
+                                                        </html>
+                                                    `);
+                                                }}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Sources */}
                             {message.sources && message.sources.length > 0 && (
                                 <div className="mt-3 flex flex-wrap gap-1">
@@ -12421,7 +13647,7 @@ FILE: app/ui/modern.html
         }
 
         // Right Inspector Component
-        function RightInspector({ activePanel, setActivePanel, citations, toolTrace }) {
+        function RightInspector({ activePanel, setActivePanel, citations, toolTrace, uploadedPdfs, selectedPdfChunk, setSelectedPdfChunk }) {
             return (
                 <div className="w-80 bg-white border-l border-slate-200 flex flex-col">
                     {/* Panel Tabs */}
@@ -12451,13 +13677,34 @@ FILE: app/ui/modern.html
                     {/* Panel Content */}
                     <div className="flex-1 overflow-y-auto p-4">
                         {activePanel === 'citations' && (
-                            <CitationsPanel citations={citations} />
+                            <CitationsPanel 
+                                citations={citations} 
+                                onPdfChunkClick={(filename, chunkId) => {
+                                    // Switch to docs panel
+                                    setActivePanel('docs');
+                                    setSelectedPdfChunk(chunkId);
+                                    
+                                    // Find and auto-select the PDF by filename
+                                    const matchingPdf = uploadedPdfs.find(pdf => 
+                                        pdf.filename === filename
+                                    );
+                                    
+                                    if (matchingPdf) {
+                                        // This will be handled by the DocViewerPanel
+                                        console.log(`Navigating to PDF: ${filename}, Chunk: ${chunkId}`);
+                                    }
+                                }}
+                            />
                         )}
                         {activePanel === 'trace' && (
                             <ToolTracePanel toolTrace={toolTrace} />
                         )}
                         {activePanel === 'docs' && (
-                            <DocViewerPanel />
+                            <DocViewerPanel 
+                                uploadedPdfs={uploadedPdfs}
+                                selectedPdfChunk={selectedPdfChunk}
+                                setSelectedPdfChunk={setSelectedPdfChunk}
+                            />
                         )}
                     </div>
                 </div>
@@ -12465,7 +13712,7 @@ FILE: app/ui/modern.html
         }
 
         // Citations Panel
-        function CitationsPanel({ citations }) {
+        function CitationsPanel({ citations, onPdfChunkClick }) {
             if (citations.length === 0) {
                 return (
                     <div className="text-center py-8 text-slate-500">
@@ -12503,6 +13750,25 @@ FILE: app/ui/modern.html
                             type = 'document';
                             icon = 'fa-file-text';
                         }
+                        // Handle PDF citations with chunk IDs
+                        else if (citation.includes('.pdf') || citation.includes('pdf_') || citation.includes('chunk_')) {
+                            type = 'pdf';
+                            icon = 'fa-file-pdf';
+                            
+                            // Try to extract PDF filename and chunk ID
+                            const pdfMatch = citation.match(/([^\/]+\.pdf)/);
+                            const chunkMatch = citation.match(/(chunk_\w+|para_\d+|page_\d+)/);
+                            
+                            if (pdfMatch) {
+                                sourceName = pdfMatch[1];
+                                if (chunkMatch) {
+                                    score = `Chunk: ${chunkMatch[1]}`;
+                                    // Store chunk info for click handler
+                                    citation.chunkId = chunkMatch[1];
+                                    citation.filename = pdfMatch[1];
+                                }
+                            }
+                        }
                         // Handle other citation formats
                         else if (citation.includes('.md')) {
                             type = 'document';
@@ -12517,6 +13783,7 @@ FILE: app/ui/modern.html
                             <div key={index} className={`border rounded-md p-3 ${
                                 type === 'routing' ? 'border-teal-200 bg-teal-50' :
                                 type === 'web' ? 'border-blue-200 bg-blue-50' :
+                                type === 'pdf' ? 'border-red-200 bg-red-50' :
                                 'border-slate-200'
                             }`}>
                                 <div className="flex items-start justify-between mb-2">
@@ -12524,6 +13791,7 @@ FILE: app/ui/modern.html
                                         <i className={`fas ${icon} text-sm mt-0.5 ${
                                             type === 'routing' ? 'text-teal-600' :
                                             type === 'web' ? 'text-blue-600' :
+                                            type === 'pdf' ? 'text-red-600' :
                                             'text-slate-600'
                                         }`}></i>
                                         <div>
@@ -12534,6 +13802,7 @@ FILE: app/ui/modern.html
                                                 <div className={`text-xs mt-1 ${
                                                     type === 'routing' ? 'text-teal-600' :
                                                     type === 'web' ? 'text-blue-600' :
+                                                    type === 'pdf' ? 'text-red-600' :
                                                     'text-slate-500'
                                                 }`}>
                                                     {score}
@@ -12553,6 +13822,18 @@ FILE: app/ui/modern.html
                                     <button className="text-xs text-slate-600 hover:text-slate-800">
                                         <i className="fas fa-eye mr-1"></i>
                                         View source
+                                    </button>
+                                )}
+                                {type === 'pdf' && citation.chunkId && (
+                                    <button 
+                                        onClick={() => {
+                                            // Switch to docs panel
+                                            onPdfChunkClick(citation.filename, citation.chunkId);
+                                        }}
+                                        className="text-xs text-red-600 hover:text-red-800 transition-colors"
+                                    >
+                                        <i className="fas fa-external-link-alt mr-1"></i>
+                                        View in PDF
                                     </button>
                                 )}
                                 {type === 'web' && (
@@ -12610,19 +13891,250 @@ FILE: app/ui/modern.html
             );
         }
 
-        // Doc Viewer Panel
-        function DocViewerPanel() {
+        // Doc Viewer Panel  
+        function DocViewerPanel({ uploadedPdfs, selectedPdfChunk, setSelectedPdfChunk }) {
+            const [selectedPdf, setSelectedPdf] = useState(null);
+            const [currentPage, setCurrentPage] = useState(0);
+            const [pageData, setPageData] = useState(null);
+            const [loading, setLoading] = useState(false);
+            const [imgLoaded, setImgLoaded] = useState(null);
+            const imgRef = useRef(null);
+            
+            useEffect(() => {
+                if (selectedPdf && currentPage !== null) {
+                    loadPageData();
+                }
+            }, [selectedPdf, currentPage]);
+            
+            // Auto-select PDF when chunk is selected from citations
+            useEffect(() => {
+                if (selectedPdfChunk && uploadedPdfs.length > 0 && !selectedPdf) {
+                    // Find which PDF contains this chunk
+                    const findPdfWithChunk = async () => {
+                        for (const pdf of uploadedPdfs) {
+                            try {
+                                const response = await fetch(`/pdf/${pdf.pdf_id}/info`);
+                                const pdfInfo = await response.json();
+                                
+                                // Check if this PDF has the selected chunk
+                                const hasChunk = pdfInfo.chunks && pdfInfo.chunks.some(chunk => 
+                                    chunk.chunk_id === selectedPdfChunk
+                                );
+                                
+                                if (hasChunk) {
+                                    setSelectedPdf(pdf);
+                                    
+                                    // Find the page containing this chunk
+                                    const matchingChunk = pdfInfo.chunks.find(chunk => 
+                                        chunk.chunk_id === selectedPdfChunk
+                                    );
+                                    
+                                    if (matchingChunk) {
+                                        setCurrentPage(matchingChunk.page_number || 0);
+                                    }
+                                    break;
+                                }
+                            } catch (error) {
+                                console.error(`Error checking PDF ${pdf.filename}:`, error);
+                            }
+                        }
+                    };
+                    
+                    findPdfWithChunk();
+                }
+            }, [selectedPdfChunk, uploadedPdfs]);
+            
+            const loadPageData = async () => {
+                if (!selectedPdf) return;
+                
+                setLoading(true);
+                try {
+                    const response = await fetch(`/pdf/${selectedPdf.pdf_id}/page/${currentPage}`);
+                    const data = await response.json();
+                    setPageData(data);
+                } catch (error) {
+                    console.error('Error loading page data:', error);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            if (uploadedPdfs.length === 0) {
+                return (
+                    <div className="text-center py-8 text-slate-500">
+                        <i className="fas fa-file-pdf text-2xl mb-2"></i>
+                        <p>No PDFs uploaded</p>
+                        <p className="text-xs mt-1">Upload a PDF to view it here</p>
+                    </div>
+                );
+            }
+
+            if (!selectedPdf) {
+                return (
+                    <div>
+                        <h3 className="font-medium text-slate-800 mb-3">Uploaded PDFs</h3>
+                        <div className="space-y-2">
+                            {uploadedPdfs.map((pdf, index) => (
+                                <button
+                                    key={index}
+                                    onClick={() => {
+                                        setSelectedPdf(pdf);
+                                        setCurrentPage(0);
+                                    }}
+                                    className="w-full p-3 text-left bg-slate-50 hover:bg-slate-100 rounded border border-slate-200"
+                                >
+                                    <div className="flex items-center space-x-2">
+                                        <i className="fas fa-file-pdf text-red-600"></i>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="font-medium text-sm text-slate-800 truncate">
+                                                {pdf.filename}
+                                            </div>
+                                            <div className="text-xs text-slate-500">
+                                                {pdf.total_pages} pages • {pdf.chunks_extracted} chunks
+                                            </div>
+                                        </div>
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                );
+            }
+
             return (
-                <div className="text-center py-8 text-slate-500">
-                    <i className="fas fa-file-text text-2xl mb-2"></i>
-                    <p>Doc Viewer</p>
-                    <p className="text-xs mt-1">Source documents will appear here</p>
+                <div>
+                    {/* PDF Header */}
+                    <div className="border-b border-slate-200 pb-3 mb-3">
+                        <div className="flex items-center justify-between">
+                            <button 
+                                onClick={() => setSelectedPdf(null)}
+                                className="text-slate-500 hover:text-slate-700"
+                            >
+                                <i className="fas fa-arrow-left"></i>
+                            </button>
+                            <div className="text-sm font-medium text-slate-800 truncate">
+                                {selectedPdf.filename}
+                            </div>
+                            <div className="text-xs text-slate-500">
+                                {currentPage + 1}/{selectedPdf.total_pages}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Page Navigation */}
+                    <div className="flex items-center justify-center space-x-2 mb-3">
+                        <button
+                            onClick={() => setCurrentPage(Math.max(0, currentPage - 1))}
+                            disabled={currentPage === 0}
+                            className="px-2 py-1 text-xs bg-slate-100 hover:bg-slate-200 disabled:opacity-50 rounded"
+                        >
+                            <i className="fas fa-chevron-left"></i>
+                        </button>
+                        <span className="text-xs text-slate-600">
+                            Page {currentPage + 1}
+                        </span>
+                        <button
+                            onClick={() => setCurrentPage(Math.min(selectedPdf.total_pages - 1, currentPage + 1))}
+                            disabled={currentPage >= selectedPdf.total_pages - 1}
+                            className="px-2 py-1 text-xs bg-slate-100 hover:bg-slate-200 disabled:opacity-50 rounded"
+                        >
+                            <i className="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+
+                    {/* PDF Page Viewer */}
+                    <div className="relative">
+                        {loading ? (
+                            <div className="flex items-center justify-center py-8">
+                                <div className="animate-spin h-6 w-6 border-2 border-teal-500 border-t-transparent rounded-full"></div>
+                            </div>
+                        ) : pageData ? (
+                            <div className="relative border border-slate-200 rounded overflow-hidden">
+                                <img
+                                    ref={imgRef}
+                                    src={`data:image/png;base64,${pageData.image_base64}`}
+                                    alt={`Page ${currentPage + 1}`}
+                                    className="w-full h-auto"
+                                    onLoad={() => {
+                                        // Force re-render of bounding boxes when image loads
+                                        setImgLoaded(Date.now());
+                                    }}
+                                />
+                                
+                                {/* Bounding Box Overlays */}
+                                {imgLoaded && pageData.chunks.map((chunk, index) => {
+                                    // Calculate scale factor based on actual image display size
+                                    const imgElement = imgRef.current;
+                                    if (!imgElement) return null;
+                                    
+                                    // Get the natural (original) dimensions of the rendered image
+                                    const naturalWidth = imgElement.naturalWidth;
+                                    const naturalHeight = imgElement.naturalHeight;
+                                    
+                                    // Get the displayed dimensions
+                                    const displayWidth = imgElement.offsetWidth;
+                                    const displayHeight = imgElement.offsetHeight;
+                                    
+                                    // Our coordinates are based on the natural image size
+                                    // We need to scale them to the displayed size
+                                    const scaleX = displayWidth / naturalWidth;
+                                    const scaleY = displayHeight / naturalHeight;
+                                    
+                                    return (
+                                        <div
+                                            key={chunk.chunk_id}
+                                            className={`absolute border-2 cursor-pointer transition-all ${
+                                                selectedPdfChunk === chunk.chunk_id 
+                                                    ? 'border-teal-500 bg-teal-500 bg-opacity-20' 
+                                                    : 'border-blue-500 bg-blue-500 bg-opacity-10 hover:bg-opacity-20'
+                                            }`}
+                                            style={{
+                                                left: `${chunk.bbox.x * scaleX}px`,
+                                                top: `${chunk.bbox.y * scaleY}px`, 
+                                                width: `${chunk.bbox.width * scaleX}px`,
+                                                height: `${chunk.bbox.height * scaleY}px`
+                                            }}
+                                            onClick={() => setSelectedPdfChunk(
+                                                selectedPdfChunk === chunk.chunk_id ? null : chunk.chunk_id
+                                            )}
+                                            title={chunk.text}
+                                        >
+                                            <div className="absolute -top-5 -left-0.5 bg-blue-500 text-white text-xs px-1 rounded">
+                                                {index + 1}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        ) : null}
+                    </div>
+
+                    {/* Chunk Details */}
+                    {selectedPdfChunk && pageData && (
+                        <div className="mt-3 p-3 bg-slate-50 rounded border border-slate-200">
+                            <h4 className="text-sm font-medium text-slate-800 mb-2">Selected Chunk</h4>
+                            {(() => {
+                                const chunk = pageData.chunks.find(c => c.chunk_id === selectedPdfChunk);
+                                return chunk ? (
+                                    <div>
+                                        <div className="text-xs text-slate-600 mb-1">
+                                            ID: {chunk.chunk_id} • Confidence: {(chunk.confidence * 100).toFixed(1)}%
+                                        </div>
+                                        <div className="text-sm text-slate-700 max-h-32 overflow-y-auto">
+                                            {chunk.text}
+                                        </div>
+                                    </div>
+                                ) : null;
+                            })()}
+                        </div>
+                    )}
                 </div>
             );
         }
 
         // Render the app
-        ReactDOM.render(<App />, document.getElementById('root'));
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
     </script>
 </body>
 </html>

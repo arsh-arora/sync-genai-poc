@@ -6,10 +6,11 @@ Complete app wiring with middleware, agent endpoints, and UI
 import os
 import re
 import logging
+import time
 from pathlib import Path
 from typing import Optional, Dict, Any, Union
 
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Request, Response, UploadFile, File
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -29,6 +30,7 @@ from app.agents.devcopilot import DevCopilot
 from app.agents.carecredit import CareCredit
 from app.agents.narrator import PortfolioIntelNarrator
 from app.agents.imagegen import ImageGenAgent
+from app.services.pdf_processor import LandingAIPDFProcessor, ProcessedPDF
 
 # Load environment variables
 load_dotenv()
@@ -52,6 +54,8 @@ docstore = None
 embedder = None
 retriever = None
 agents = {}  # Agent registry
+pdf_processor = None
+uploaded_pdfs = {}  # Store processed PDFs
 
 # PII Redactor Middleware
 class PIIRedactorMiddleware(BaseHTTPMiddleware):
@@ -161,7 +165,7 @@ app.add_middleware(PIIRedactorMiddleware)
 @app.on_event("startup")
 async def startup_event():
     """Initialize components on startup"""
-    global docstore, embedder, retriever, agents
+    global docstore, embedder, retriever, agents, pdf_processor
     
     try:
         logger.info("Initializing document store...")
@@ -176,6 +180,9 @@ async def startup_event():
         
         logger.info("Building retriever...")
         retriever = build_retriever(docstore)
+        
+        logger.info("Initializing PDF processor...")
+        pdf_processor = LandingAIPDFProcessor()
         
         logger.info("Initializing agents...")
         agents = {
@@ -501,6 +508,150 @@ async def agent_trustshield(request: dict):
     except Exception as e:
         logger.error(f"TrustShield error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/upload/pdf")
+async def upload_pdf(file: UploadFile = File(...)):
+    """Upload and process PDF document"""
+    if not pdf_processor:
+        raise HTTPException(status_code=500, detail="PDF processor not initialized")
+    
+    # Validate file type
+    if not file.filename.lower().endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported")
+    
+    # Limit file size (10MB)
+    max_size = 10 * 1024 * 1024
+    
+    try:
+        # Save uploaded file temporarily
+        import tempfile
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
+            content = await file.read()
+            
+            if len(content) > max_size:
+                raise HTTPException(status_code=400, detail="File too large (max 10MB)")
+            
+            tmp_file.write(content)
+            tmp_path = tmp_file.name
+        
+        # Process PDF
+        logger.info(f"Processing uploaded PDF: {file.filename}")
+        processed_pdf = pdf_processor.process_pdf(tmp_path, chunk_strategy="semantic")
+        
+        # Store processed PDF
+        pdf_id = f"pdf_{int(time.time())}_{len(uploaded_pdfs)}"
+        uploaded_pdfs[pdf_id] = processed_pdf
+        
+        # Add chunks to document store for RAG
+        documents = []
+        for chunk in processed_pdf.chunks:
+            doc = chunk.to_document(file.filename)
+            doc.meta["pdf_id"] = pdf_id
+            documents.append(doc)
+        
+        # Generate embeddings and add to docstore
+        if documents:
+            texts = [doc.content for doc in documents]
+            embeddings = embedder.embed_texts(texts)
+            
+            for doc, embedding in zip(documents, embeddings):
+                doc.embedding = embedding
+            
+            docstore.write_documents(documents)
+            logger.info(f"Added {len(documents)} PDF chunks to docstore")
+        
+        # Clean up temporary file
+        os.unlink(tmp_path)
+        
+        return {
+            "success": True,
+            "pdf_id": pdf_id,
+            "filename": file.filename,
+            "total_pages": processed_pdf.total_pages,
+            "chunks_extracted": len(processed_pdf.chunks),
+            "processing_time": processed_pdf.processing_time,
+            "file_size": processed_pdf.file_size
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error processing PDF upload: {e}")
+        # Clean up temp file if it exists
+        if 'tmp_path' in locals():
+            try:
+                os.unlink(tmp_path)
+            except:
+                pass
+        raise HTTPException(status_code=500, detail=f"PDF processing failed: {str(e)}")
+
+@app.get("/pdf/{pdf_id}/info")
+async def get_pdf_info(pdf_id: str):
+    """Get detailed information about a processed PDF including chunks"""
+    if pdf_id not in uploaded_pdfs:
+        raise HTTPException(status_code=404, detail="PDF not found")
+    
+    pdf = uploaded_pdfs[pdf_id]
+    return {
+        "pdf_id": pdf_id,
+        "filename": pdf.filename,
+        "total_pages": pdf.total_pages,
+        "chunks": [
+            {
+                "chunk_id": chunk.chunk_id,
+                "text": chunk.text[:100] + "..." if len(chunk.text) > 100 else chunk.text,
+                "page_number": chunk.page_number,
+                "bbox": chunk.bbox.to_dict(),
+                "confidence": chunk.confidence
+            }
+            for chunk in pdf.chunks
+        ],
+        "processing_time": pdf.processing_time
+    }
+
+@app.get("/pdf/{pdf_id}")
+async def get_pdf_summary(pdf_id: str):
+    """Get summary information about a processed PDF"""
+    if pdf_id not in uploaded_pdfs:
+        raise HTTPException(status_code=404, detail="PDF not found")
+    
+    pdf = uploaded_pdfs[pdf_id]
+    return {
+        "pdf_id": pdf_id,
+        "filename": pdf.filename,
+        "total_pages": pdf.total_pages,
+        "chunks": len(pdf.chunks),
+        "processing_time": pdf.processing_time
+    }
+
+@app.get("/pdf/{pdf_id}/page/{page_num}")
+async def get_pdf_page(pdf_id: str, page_num: int):
+    """Get a specific page image with optional bounding box overlays"""
+    if pdf_id not in uploaded_pdfs:
+        raise HTTPException(status_code=404, detail="PDF not found")
+    
+    pdf = uploaded_pdfs[pdf_id]
+    
+    if page_num >= len(pdf.page_images) or page_num < 0:
+        raise HTTPException(status_code=404, detail="Page not found")
+    
+    # Get chunks for this page
+    page_chunks = [chunk for chunk in pdf.chunks if chunk.page_number == page_num]
+    
+    return {
+        "pdf_id": pdf_id,
+        "page_number": page_num,
+        "image_base64": pdf.page_images[page_num],
+        "chunks": [
+            {
+                "chunk_id": chunk.chunk_id,
+                "text": chunk.text[:200] + "..." if len(chunk.text) > 200 else chunk.text,
+                "bbox": chunk.bbox.to_dict(),
+                "confidence": chunk.confidence
+            }
+            for chunk in page_chunks
+        ]
+    }
 
 # Health endpoint
 @app.get("/healthz")
