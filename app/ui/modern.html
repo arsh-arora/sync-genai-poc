@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GenAI Studio (Hackathon PoC)</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'teal': {
+                            500: '#14b8a6',
+                            600: '#0d9488',
+                        },
+                        'slate': {
+                            50: '#f8fafc',
+                            100: '#f1f5f9',
+                            200: '#e2e8f0',
+                            300: '#cbd5e1',
+                            400: '#94a3b8',
+                            500: '#64748b',
+                            600: '#475569',
+                            700: '#334155',
+                            800: '#1e293b',
+                            900: '#0f172a',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .chat-message {
+            animation: slideInUp 0.3s ease-out;
+        }
+        @keyframes slideInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        .tool-chip {
+            transition: all 0.2s ease;
+        }
+        .tool-chip:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .redacted-text {
+            background: linear-gradient(90deg, #94a3b8 25%, transparent 25%);
+            background-size: 8px 1px;
+            background-repeat: repeat-x;
+            background-position: 0 50%;
+            color: transparent;
+        }
+        .redacted-text:hover::after {
+            content: " (Redacted)";
+            color: #64748b;
+            font-size: 0.75rem;
+            background: #1e293b;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-left: 4px;
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50">
+    <div id="root" class="h-full"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // Agent configurations
+        const AGENTS = {
+            'smart': {
+                name: 'Smart Chat',
+                icon: 'fa-brain',
+                color: 'text-teal-600',
+                example: 'Find a standing desk under ₹50k with 12-mo 0% APR',
+                tooltip: 'AI router - finds the best agent for your query'
+            },
+            'offerpilot': {
+                name: 'OfferPilot',
+                icon: 'fa-tags',
+                color: 'text-blue-600',
+                example: 'Show me laptops under ₹80k with financing options',
+                tooltip: 'Product search with financing pre-qualification'
+            },
+            'trustshield': {
+                name: 'TrustShield',
+                icon: 'fa-shield-halved',
+                color: 'text-red-600',
+                example: 'I got an email asking for gift cards as refund',
+                tooltip: 'Fraud detection and PII protection system'
+            },
+            'dispute': {
+                name: 'Dispute',
+                icon: 'fa-gavel',
+                color: 'text-amber-600',
+                example: 'Charged twice for ₹12,499 at Amazon on Dec 15th',
+                tooltip: 'Transaction dispute resolution assistant'
+            },
+            'collections': {
+                name: 'Collections',
+                icon: 'fa-handshake',
+                color: 'text-green-600',
+                example: 'I have ₹25k balance at 24% APR, need payment options',
+                tooltip: 'Hardship and payment plan assistance'
+            },
+            'contracts': {
+                name: 'Contracts',
+                icon: 'fa-file-contract',
+                color: 'text-purple-600',
+                example: 'Review my merchant agreement for key obligations',
+                tooltip: 'Contract analysis and obligation tracking'
+            },
+            'devcopilot': {
+                name: 'DevCopilot',
+                icon: 'fa-code',
+                color: 'text-indigo-600',
+                example: 'Generate Python code for payments API integration',
+                tooltip: 'Developer tools and API integration help'
+            },
+            'carecredit': {
+                name: 'CareCredit',
+                icon: 'fa-heart-pulse',
+                color: 'text-pink-600',
+                example: 'Dental procedure costs ₹45k, what are my options?',
+                tooltip: 'Healthcare financing and payment plans'
+            },
+            'narrator': {
+                name: 'Narrator',
+                icon: 'fa-chart-line',
+                color: 'text-orange-600',
+                example: 'Why did spend drop after 2025-07-31?',
+                tooltip: 'Portfolio analytics and business insights'
+            }
+        };
+
+        // Main App Component
+        function App() {
+            const [selectedAgent, setSelectedAgent] = useState('smart');
+            const [allowTavily, setAllowTavily] = useState(false);
+            const [messages, setMessages] = useState([]);
+            const [inputText, setInputText] = useState('');
+            const [isLoading, setIsLoading] = useState(false);
+            const [rightPanel, setRightPanel] = useState('citations');
+            const [citations, setCitations] = useState([]);
+            const [toolTrace, setToolTrace] = useState([]);
+            const messagesEndRef = useRef(null);
+
+            useEffect(() => {
+                messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+            }, [messages]);
+
+            const sendMessage = async () => {
+                if (!inputText.trim()) return;
+
+                const userMessage = {
+                    id: Date.now(),
+                    type: 'user',
+                    content: inputText,
+                    timestamp: new Date()
+                };
+
+                setMessages(prev => [...prev, userMessage]);
+                setIsLoading(true);
+
+                try {
+                    const endpoint = selectedAgent === 'smart' ? '/chat' : `/agent/${selectedAgent}`;
+                    const payload = selectedAgent === 'smart' 
+                        ? { message: inputText, allow_tavily: allowTavily }
+                        : { query: inputText };
+
+                    const response = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    const data = await response.json();
+                    
+                    const assistantMessage = {
+                        id: Date.now() + 1,
+                        type: 'assistant',
+                        content: data.response || data,
+                        agent: data.agent || selectedAgent,
+                        confidence: data.confidence || 1.0,
+                        sources: data.sources || [],
+                        used_tavily: data.used_tavily || false,
+                        timestamp: new Date(),
+                        latency: Math.random() * 2000 + 500 // Mock latency
+                    };
+
+                    setMessages(prev => [...prev, assistantMessage]);
+                    setCitations(data.sources || []);
+                    setToolTrace(prev => [...prev, {
+                        tool: selectedAgent,
+                        args: payload,
+                        result: data,
+                        timestamp: new Date()
+                    }]);
+
+                } catch (error) {
+                    console.error('Error sending message:', error);
+                    setMessages(prev => [...prev, {
+                        id: Date.now() + 1,
+                        type: 'error',
+                        content: 'Sorry, there was an error processing your request.',
+                        timestamp: new Date()
+                    }]);
+                }
+
+                setInputText('');
+                setIsLoading(false);
+            };
+
+            const useExample = (agentKey) => {
+                setInputText(AGENTS[agentKey].example);
+                setSelectedAgent(agentKey);
+            };
+
+            const clearChat = () => {
+                setMessages([]);
+                setCitations([]);
+                setToolTrace([]);
+            };
+
+            const exportJSON = () => {
+                const lastMessage = messages[messages.length - 1];
+                if (lastMessage && lastMessage.type === 'assistant') {
+                    const blob = new Blob([JSON.stringify(lastMessage, null, 2)], 
+                        { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `genai-response-${Date.now()}.json`;
+                    a.click();
+                }
+            };
+
+            return (
+                <div className="h-screen flex flex-col bg-slate-50">
+                    {/* Header */}
+                    <Header 
+                        allowTavily={allowTavily}
+                        setAllowTavily={setAllowTavily}
+                        onClear={clearChat}
+                        onExport={exportJSON}
+                    />
+
+                    {/* Main Content */}
+                    <div className="flex-1 flex overflow-hidden">
+                        {/* Left Rail */}
+                        <LeftRail 
+                            selectedAgent={selectedAgent}
+                            onSelectAgent={setSelectedAgent}
+                            onUseExample={useExample}
+                        />
+
+                        {/* Chat Pane */}
+                        <ChatPane
+                            messages={messages}
+                            isLoading={isLoading}
+                            inputText={inputText}
+                            setInputText={setInputText}
+                            selectedAgent={selectedAgent}
+                            allowTavily={allowTavily}
+                            onSendMessage={sendMessage}
+                            messagesEndRef={messagesEndRef}
+                        />
+
+                        {/* Right Inspector */}
+                        <RightInspector
+                            activePanel={rightPanel}
+                            setActivePanel={setRightPanel}
+                            citations={citations}
+                            toolTrace={toolTrace}
+                        />
+                    </div>
+                </div>
+            );
+        }
+
+        // Header Component
+        function Header({ allowTavily, setAllowTavily, onClear, onExport }) {
+            return (
+                <header className="bg-white border-b border-slate-200 px-6 py-3">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-4">
+                            <h1 className="text-xl font-semibold text-slate-800">
+                                GenAI Studio <span className="text-sm font-normal text-slate-500">(Hackathon PoC)</span>
+                            </h1>
+                            <div className="flex items-center space-x-3">
+                                <span className="px-2 py-1 text-xs bg-slate-100 text-slate-600 rounded-md">
+                                    Local • No DB
+                                </span>
+                                <label className="flex items-center space-x-2 text-sm">
+                                    <input
+                                        type="checkbox"
+                                        checked={allowTavily}
+                                        onChange={(e) => setAllowTavily(e.target.checked)}
+                                        className="rounded text-teal-600 focus:ring-teal-500"
+                                    />
+                                    <span className="text-slate-600">Allow Tavily</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center space-x-3">
+                            <span className="px-2 py-1 text-xs bg-green-100 text-green-600 rounded-md">
+                                PII Redaction ON
+                            </span>
+                            <button
+                                onClick={onClear}
+                                className="px-3 py-1 text-sm text-slate-600 hover:text-slate-800"
+                            >
+                                Clear
+                            </button>
+                            <button
+                                onClick={onExport}
+                                className="px-3 py-1 text-sm text-slate-600 hover:text-slate-800"
+                            >
+                                Export JSON
+                            </button>
+                            <span className="px-2 py-1 text-xs bg-amber-100 text-amber-700 rounded-md">
+                                Demo — not legal/credit advice
+                            </span>
+                        </div>
+                    </div>
+                </header>
+            );
+        }
+
+        // Left Rail Component
+        function LeftRail({ selectedAgent, onSelectAgent, onUseExample }) {
+            return (
+                <div className="w-64 bg-white border-r border-slate-200 flex flex-col">
+                    <div className="p-4 border-b border-slate-200">
+                        <h2 className="font-medium text-slate-800 mb-3">Agents</h2>
+                    </div>
+                    <div className="flex-1 overflow-y-auto">
+                        {Object.entries(AGENTS).map(([key, agent]) => (
+                            <AgentItem
+                                key={key}
+                                agentKey={key}
+                                agent={agent}
+                                isSelected={selectedAgent === key}
+                                onSelect={() => onSelectAgent(key)}
+                                onUseExample={() => onUseExample(key)}
+                            />
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        // Agent Item Component
+        function AgentItem({ agentKey, agent, isSelected, onSelect, onUseExample }) {
+            return (
+                <div 
+                    className={`p-3 border-b border-slate-100 cursor-pointer hover:bg-slate-50 transition-colors ${
+                        isSelected ? 'bg-teal-50 border-r-2 border-teal-500' : ''
+                    }`}
+                    onClick={onSelect}
+                >
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                            <i className={`fas ${agent.icon} ${agent.color}`}></i>
+                            <div>
+                                <div className="font-medium text-sm text-slate-800">
+                                    {agent.name}
+                                </div>
+                                <div className="text-xs text-slate-500 mt-1">
+                                    {agent.tooltip}
+                                </div>
+                            </div>
+                        </div>
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onUseExample();
+                            }}
+                            className="text-xs text-teal-600 hover:text-teal-700 p-1"
+                            title="Try Example"
+                        >
+                            <i className="fas fa-play"></i>
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+
+        // Chat Pane Component
+        function ChatPane({ messages, isLoading, inputText, setInputText, selectedAgent, allowTavily, onSendMessage, messagesEndRef }) {
+            const handleKeyPress = (e) => {
+                if (e.key === 'Enter' && (e.shiftKey || e.ctrlKey)) {
+                    e.preventDefault();
+                    onSendMessage();
+                }
+            };
+
+            return (
+                <div className="flex-1 flex flex-col bg-white">
+                    {/* Chat Header */}
+                    <div className="p-4 border-b border-slate-200">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-2">
+                                <i className={`fas ${AGENTS[selectedAgent].icon} ${AGENTS[selectedAgent].color}`}></i>
+                                <span className="font-medium text-slate-800">{AGENTS[selectedAgent].name}</span>
+                                {selectedAgent !== 'smart' && (
+                                    <span className="px-2 py-1 text-xs bg-slate-100 text-slate-600 rounded">
+                                        Direct Mode
+                                    </span>
+                                )}
+                            </div>
+                            <div className="text-sm text-slate-500">
+                                {messages.length} messages
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Messages */}
+                    <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                        {messages.length === 0 && (
+                            <div className="text-center py-12">
+                                <i className={`fas ${AGENTS[selectedAgent].icon} text-4xl ${AGENTS[selectedAgent].color} mb-4`}></i>
+                                <h3 className="text-lg font-medium text-slate-800 mb-2">
+                                    {AGENTS[selectedAgent].name}
+                                </h3>
+                                <p className="text-slate-600 mb-4">
+                                    {AGENTS[selectedAgent].tooltip}
+                                </p>
+                                <div className="text-sm text-slate-500">
+                                    Try: "{AGENTS[selectedAgent].example}"
+                                </div>
+                            </div>
+                        )}
+                        
+                        {messages.map((message) => (
+                            <ChatMessage key={message.id} message={message} />
+                        ))}
+                        
+                        {isLoading && (
+                            <div className="flex justify-center py-4">
+                                <div className="flex items-center space-x-2 text-slate-500">
+                                    <div className="animate-spin h-4 w-4 border-2 border-teal-500 border-t-transparent rounded-full"></div>
+                                    <span>Thinking...</span>
+                                </div>
+                            </div>
+                        )}
+                        <div ref={messagesEndRef} />
+                    </div>
+
+                    {/* Composer */}
+                    <div className="border-t border-slate-200 p-4">
+                        <div className="flex items-end space-x-3">
+                            <div className="flex-1">
+                                <textarea
+                                    value={inputText}
+                                    onChange={(e) => setInputText(e.target.value)}
+                                    onKeyPress={handleKeyPress}
+                                    placeholder={selectedAgent === 'smart' 
+                                        ? 'Ask to shop + finance, dispute, contracts, APIs, care, or portfolio insights…'
+                                        : `Ask ${AGENTS[selectedAgent].name}...`
+                                    }
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-md resize-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                                    rows={Math.min(inputText.split('\n').length, 4)}
+                                    disabled={isLoading}
+                                />
+                                <div className="flex items-center justify-between mt-2">
+                                    <div className="flex items-center space-x-2">
+                                        {selectedAgent === 'smart' && (
+                                            <label className="flex items-center space-x-1 text-xs text-slate-500">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={allowTavily}
+                                                    onChange={(e) => setAllowTavily(e.target.checked)}
+                                                    className="rounded"
+                                                />
+                                                <span>Use Tavily</span>
+                                            </label>
+                                        )}
+                                    </div>
+                                    <div className="text-xs text-slate-400">
+                                        {inputText.length} chars • Shift+Enter to send
+                                    </div>
+                                </div>
+                            </div>
+                            <button
+                                onClick={onSendMessage}
+                                disabled={isLoading || !inputText.trim()}
+                                className="px-4 py-2 bg-teal-600 text-white rounded-md hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                <i className="fas fa-paper-plane"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Chat Message Component
+        function ChatMessage({ message }) {
+            if (message.type === 'user') {
+                return (
+                    <div className="flex justify-end">
+                        <div className="bg-teal-600 text-white px-4 py-2 rounded-lg max-w-md">
+                            {message.content}
+                        </div>
+                    </div>
+                );
+            }
+
+            if (message.type === 'error') {
+                return (
+                    <div className="flex">
+                        <div className="bg-red-100 text-red-700 px-4 py-2 rounded-lg max-w-md">
+                            <i className="fas fa-exclamation-triangle mr-2"></i>
+                            {message.content}
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="chat-message">
+                    <div className="flex items-start space-x-3">
+                        <div className={`w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center`}>
+                            <i className={`fas ${AGENTS[message.agent]?.icon || 'fa-robot'} text-slate-600`}></i>
+                        </div>
+                        <div className="flex-1">
+                            {/* Message Header */}
+                            <div className="flex items-center space-x-2 mb-2">
+                                <span className="font-medium text-sm text-slate-800">
+                                    {AGENTS[message.agent]?.name || message.agent}
+                                </span>
+                                <span className="text-xs text-slate-500">
+                                    {message.timestamp.toLocaleTimeString()}
+                                </span>
+                                {message.latency && (
+                                    <span className="text-xs text-slate-400">
+                                        {Math.round(message.latency)}ms
+                                    </span>
+                                )}
+                                {message.confidence && (
+                                    <span className={`text-xs px-1 py-0.5 rounded ${
+                                        message.confidence > 0.8 ? 'bg-green-100 text-green-600' :
+                                        message.confidence > 0.6 ? 'bg-yellow-100 text-yellow-600' :
+                                        'bg-red-100 text-red-600'
+                                    }`}>
+                                        {Math.round(message.confidence * 100)}%
+                                    </span>
+                                )}
+                                {message.used_tavily && (
+                                    <span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded">
+                                        <i className="fas fa-globe mr-1"></i>
+                                        Web Enhanced
+                                    </span>
+                                )}
+                            </div>
+
+                            {/* Message Content */}
+                            <div className="prose prose-sm max-w-none text-slate-700">
+                                {typeof message.content === 'string' ? (
+                                    <div dangerouslySetInnerHTML={{ 
+                                        __html: message.content
+                                            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                                            .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                                            .replace(/\[REDACTED[^\]]*\]/g, '<span class="redacted-text">████████</span>')
+                                            .replace(/\n/g, '<br>')
+                                    }} />
+                                ) : (
+                                    <pre className="text-sm bg-slate-50 p-3 rounded border overflow-x-auto">
+                                        {JSON.stringify(message.content, null, 2)}
+                                    </pre>
+                                )}
+                            </div>
+
+                            {/* Sources */}
+                            {message.sources && message.sources.length > 0 && (
+                                <div className="mt-3 flex flex-wrap gap-1">
+                                    {message.sources.slice(0, 5).map((source, index) => (
+                                        <button
+                                            key={index}
+                                            className="tool-chip text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-2 py-1 rounded-md"
+                                            title={source}
+                                        >
+                                            <i className="fas fa-quote-left mr-1"></i>
+                                            ({index + 1})
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Right Inspector Component
+        function RightInspector({ activePanel, setActivePanel, citations, toolTrace }) {
+            return (
+                <div className="w-80 bg-white border-l border-slate-200 flex flex-col">
+                    {/* Panel Tabs */}
+                    <div className="border-b border-slate-200">
+                        <div className="flex">
+                            {[
+                                { id: 'citations', label: 'Citations', icon: 'fa-quote-left' },
+                                { id: 'trace', label: 'Tool Trace', icon: 'fa-code' },
+                                { id: 'docs', label: 'Doc Viewer', icon: 'fa-file-text' }
+                            ].map(tab => (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => setActivePanel(tab.id)}
+                                    className={`flex-1 px-3 py-2 text-sm font-medium border-b-2 ${
+                                        activePanel === tab.id
+                                            ? 'border-teal-500 text-teal-600'
+                                            : 'border-transparent text-slate-500 hover:text-slate-700'
+                                    }`}
+                                >
+                                    <i className={`fas ${tab.icon} mr-1`}></i>
+                                    {tab.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Panel Content */}
+                    <div className="flex-1 overflow-y-auto p-4">
+                        {activePanel === 'citations' && (
+                            <CitationsPanel citations={citations} />
+                        )}
+                        {activePanel === 'trace' && (
+                            <ToolTracePanel toolTrace={toolTrace} />
+                        )}
+                        {activePanel === 'docs' && (
+                            <DocViewerPanel />
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        // Citations Panel
+        function CitationsPanel({ citations }) {
+            if (citations.length === 0) {
+                return (
+                    <div className="text-center py-8 text-slate-500">
+                        <i className="fas fa-quote-left text-2xl mb-2"></i>
+                        <p>No citations yet</p>
+                        <p className="text-xs mt-1">Sources will appear here</p>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="space-y-3">
+                    {citations.map((citation, index) => {
+                        // Parse different citation formats
+                        let sourceName = citation;
+                        let score = null;
+                        let type = 'source';
+                        let icon = 'fa-file-text';
+                        
+                        // Handle routing info (first citation)
+                        if (citation.includes('🎯 Routed to:')) {
+                            const match = citation.match(/🎯 Routed to: (\w+) \((\d+\.?\d*)% confidence\)/);
+                            if (match) {
+                                sourceName = `Routed to ${match[1]}`;
+                                score = `${match[2]}% confidence`;
+                                type = 'routing';
+                                icon = 'fa-route';
+                            }
+                        }
+                        // Handle score-based citations
+                        else if (citation.includes(' - Score:')) {
+                            const parts = citation.split(' - Score:');
+                            sourceName = parts[0].trim();
+                            score = `Score: ${parts[1].trim()}`;
+                            type = 'document';
+                            icon = 'fa-file-text';
+                        }
+                        // Handle other citation formats
+                        else if (citation.includes('.md')) {
+                            type = 'document';
+                            icon = 'fa-file-text';
+                        }
+                        else if (citation.includes('Web Enhanced') || citation.includes('Tavily')) {
+                            type = 'web';
+                            icon = 'fa-globe';
+                        }
+                        
+                        return (
+                            <div key={index} className={`border rounded-md p-3 ${
+                                type === 'routing' ? 'border-teal-200 bg-teal-50' :
+                                type === 'web' ? 'border-blue-200 bg-blue-50' :
+                                'border-slate-200'
+                            }`}>
+                                <div className="flex items-start justify-between mb-2">
+                                    <div className="flex items-start space-x-2">
+                                        <i className={`fas ${icon} text-sm mt-0.5 ${
+                                            type === 'routing' ? 'text-teal-600' :
+                                            type === 'web' ? 'text-blue-600' :
+                                            'text-slate-600'
+                                        }`}></i>
+                                        <div>
+                                            <div className="text-sm font-medium text-slate-800">
+                                                {sourceName}
+                                            </div>
+                                            {score && (
+                                                <div className={`text-xs mt-1 ${
+                                                    type === 'routing' ? 'text-teal-600' :
+                                                    type === 'web' ? 'text-blue-600' :
+                                                    'text-slate-500'
+                                                }`}>
+                                                    {score}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <span className={`text-xs px-2 py-1 rounded ${
+                                        type === 'routing' ? 'bg-teal-100 text-teal-700' :
+                                        type === 'web' ? 'bg-blue-100 text-blue-700' :
+                                        'bg-slate-100 text-slate-600'
+                                    }`}>
+                                        ({index + 1})
+                                    </span>
+                                </div>
+                                {type === 'document' && (
+                                    <button className="text-xs text-slate-600 hover:text-slate-800">
+                                        <i className="fas fa-eye mr-1"></i>
+                                        View source
+                                    </button>
+                                )}
+                                {type === 'web' && (
+                                    <div className="text-xs text-blue-600">
+                                        <i className="fas fa-external-link-alt mr-1"></i>
+                                        External source
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            );
+        }
+
+        // Tool Trace Panel
+        function ToolTracePanel({ toolTrace }) {
+            if (toolTrace.length === 0) {
+                return (
+                    <div className="text-center py-8 text-slate-500">
+                        <i className="fas fa-code text-2xl mb-2"></i>
+                        <p>No trace yet</p>
+                        <p className="text-xs mt-1">Tool calls will appear here</p>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="space-y-3">
+                    {toolTrace.map((trace, index) => (
+                        <div key={index} className="border border-slate-200 rounded-md">
+                            <div className="p-3 border-b border-slate-100">
+                                <div className="flex items-center justify-between">
+                                    <span className="font-medium text-sm text-slate-800">
+                                        {trace.tool}
+                                    </span>
+                                    <span className="text-xs text-slate-500">
+                                        {trace.timestamp.toLocaleTimeString()}
+                                    </span>
+                                </div>
+                            </div>
+                            <div className="p-3">
+                                <details className="text-xs">
+                                    <summary className="cursor-pointer text-slate-600 mb-2">
+                                        View details
+                                    </summary>
+                                    <pre className="bg-slate-50 p-2 rounded text-slate-700 overflow-x-auto">
+                                        {JSON.stringify(trace.result, null, 2).slice(0, 500)}...
+                                    </pre>
+                                </details>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            );
+        }
+
+        // Doc Viewer Panel
+        function DocViewerPanel() {
+            return (
+                <div className="text-center py-8 text-slate-500">
+                    <i className="fas fa-file-text text-2xl mb-2"></i>
+                    <p>Doc Viewer</p>
+                    <p className="text-xs mt-1">Source documents will appear here</p>
+                </div>
+            );
+        }
+
+        // Render the app
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>

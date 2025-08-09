@@ -236,10 +236,22 @@ class CareCreditRequest(BaseModel):
 class NarratorRequest(BaseModel):
     question: str
 
-# UI Route
+# UI Routes
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    """Serve the main UI"""
+    """Serve the modern React UI"""
+    try:
+        ui_path = Path("app/ui/modern.html")
+        if ui_path.exists():
+            return HTMLResponse(content=ui_path.read_text(encoding='utf-8'), status_code=200)
+        else:
+            return HTMLResponse(content="<h1>Modern UI not found</h1><p>Please check app/ui/modern.html</p>", status_code=404)
+    except Exception as e:
+        return HTMLResponse(content=f"<h1>Error loading UI</h1><p>{str(e)}</p>", status_code=500)
+
+@app.get("/classic", response_class=HTMLResponse)
+async def classic_ui():
+    """Serve the classic UI as backup"""
     return HTMLResponse(content=UI_HTML, status_code=200)
 
 # Smart Chat Endpoint
