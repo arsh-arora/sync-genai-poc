@@ -1,0 +1,149 @@
+{
+  "policy_version": "2025.1",
+  "effective_date": "2025-01-01",
+  "allowed_actions": {
+    "deferral": {
+      "enabled": true,
+      "max_months": 6,
+      "min_balance": 100.0,
+      "max_balance": 50000.0,
+      "eligible_buckets": ["current", "30", "60", "90", "120+"],
+      "required_income_verification": true,
+      "max_deferrals_per_year": 2
+    },
+    "re_aging": {
+      "enabled": true,
+      "min_bucket": "60",
+      "eligible_buckets": ["60", "90", "120+"],
+      "min_payment_history": 3,
+      "min_payment_amount_pct": 0.10,
+      "max_re_aging_per_year": 1,
+      "requires_hardship_documentation": true
+    },
+    "settlement": {
+      "enabled": true,
+      "min_settlement_pct": 0.40,
+      "max_settlement_pct": 0.85,
+      "eligible_buckets": ["90", "120+"],
+      "requires_lump_sum": false,
+      "split_payment_max_months": 12,
+      "requires_financial_hardship": true
+    },
+    "interest_reduction": {
+      "enabled": true,
+      "min_reduction_pct": 0.25,
+      "max_reduction_pct": 0.75,
+      "max_cycles": 12,
+      "eligible_buckets": ["current", "30", "60"],
+      "requires_autopay": true,
+      "min_payment_amount_pct": 0.02
+    },
+    "payment_plan": {
+      "enabled": true,
+      "min_months": 6,
+      "max_months": 60,
+      "min_monthly_payment": 25.0,
+      "eligible_buckets": ["current", "30", "60", "90", "120+"],
+      "requires_income_verification": true
+    }
+  },
+  "risk_parameters": {
+    "chargeoff_risk_factors": {
+      "bucket_multipliers": {
+        "current": 0.02,
+        "30": 0.08,
+        "60": 0.20,
+        "90": 0.45,
+        "120+": 0.75
+      },
+      "income_ratio_impact": {
+        "high_ratio": 0.1,
+        "medium_ratio": 0.3,
+        "low_ratio": 0.7
+      },
+      "balance_size_impact": {
+        "small": 0.1,
+        "medium": 0.2,
+        "large": 0.4
+      }
+    },
+    "affordability_thresholds": {
+      "comfortable": 0.3,
+      "manageable": 0.5,
+      "stretched": 0.8
+    }
+  },
+  "mandatory_disclosures": {
+    "deferral": [
+      "Interest will continue to accrue during the deferral period",
+      "Your account will remain past due during deferral",
+      "Credit reporting may continue during deferral period",
+      "This is a temporary hardship accommodation",
+      "You must resume regular payments after the deferral period"
+    ],
+    "re_aging": [
+      "Re-aging will bring your account current",
+      "You must make consecutive on-time payments to maintain current status",
+      "Re-aging is limited to once per 12-month period",
+      "Failure to maintain payments may result in immediate acceleration",
+      "This accommodation may be reported to credit bureaus"
+    ],
+    "settlement": [
+      "Settlement amount is less than the full balance owed",
+      "Forgiven debt may be reported as taxable income",
+      "Settlement will be reported to credit bureaus as 'settled for less than full amount'",
+      "This will have a negative impact on your credit score",
+      "Payment must be received by the agreed deadline"
+    ],
+    "interest_reduction": [
+      "Reduced interest rate is temporary and subject to terms",
+      "Rate will return to standard APR after the promotional period",
+      "You must maintain automatic payments to qualify",
+      "Missing payments will result in immediate rate restoration",
+      "This is a hardship accommodation and may be reported"
+    ],
+    "payment_plan": [
+      "You must make all scheduled payments on time",
+      "Missing payments may result in plan termination",
+      "Interest continues to accrue at your current APR",
+      "Plan terms are subject to credit review and approval",
+      "Additional fees may apply for plan setup"
+    ]
+  },
+  "compliance_requirements": {
+    "udaap_safe": true,
+    "cfpb_compliant": true,
+    "state_regulations": {
+      "california": {
+        "additional_disclosures": ["California residents have additional rights under state law"],
+        "cooling_off_period": 3
+      },
+      "new_york": {
+        "additional_disclosures": ["New York residents may contact the state attorney general"],
+        "mandatory_review_period": 5
+      }
+    },
+    "documentation_required": {
+      "income_verification": ["pay stubs", "tax returns", "bank statements"],
+      "hardship_documentation": ["medical bills", "unemployment notice", "divorce decree"],
+      "identity_verification": ["government ID", "SSN verification"]
+    }
+  },
+  "escalation_triggers": {
+    "supervisor_review": {
+      "settlement_above_pct": 0.70,
+      "deferral_months_above": 4,
+      "multiple_hardships_per_year": 2
+    },
+    "legal_review": {
+      "settlement_below_pct": 0.50,
+      "disputed_debt": true,
+      "bankruptcy_indication": true
+    },
+    "executive_approval": {
+      "balance_above": 25000.0,
+      "settlement_below_pct": 0.45,
+      "regulatory_complaint": true
+    }
+  }
+}

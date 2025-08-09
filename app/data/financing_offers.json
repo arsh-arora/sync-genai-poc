@@ -1,0 +1,126 @@
+{
+  "offers": [
+    {
+      "id": "SYNC-0APR-12",
+      "name": "0% APR for 12 Months",
+      "type": "promotional",
+      "merchant": "OfficeMax",
+      "months": 12,
+      "apr": 0.0,
+      "min_purchase": 299.00,
+      "max_purchase": 2000.00,
+      "disclaimer": "0% APR for 12 months on purchases of $299 or more. Interest will be charged from the purchase date if the promotional balance is not paid in full within 12 months."
+    },
+    {
+      "id": "SYNC-0APR-18",
+      "name": "0% APR for 18 Months",
+      "type": "promotional",
+      "merchant": "Apple Store",
+      "months": 18,
+      "apr": 0.0,
+      "min_purchase": 500.00,
+      "max_purchase": 5000.00,
+      "disclaimer": "0% APR for 18 months on purchases of $500 or more. Interest will be charged from the purchase date if the promotional balance is not paid in full within 18 months."
+    },
+    {
+      "id": "SYNC-0APR-24",
+      "name": "0% APR for 24 Months",
+      "type": "promotional",
+      "merchant": "Dell",
+      "months": 24,
+      "apr": 0.0,
+      "min_purchase": 750.00,
+      "max_purchase": 3000.00,
+      "disclaimer": "0% APR for 24 months on purchases of $750 or more. Interest will be charged from the purchase date if the promotional balance is not paid in full within 24 months."
+    },
+    {
+      "id": "SYNC-STD-12",
+      "name": "Standard 12 Month Plan",
+      "type": "standard",
+      "merchant": "IKEA",
+      "months": 12,
+      "apr": 19.99,
+      "min_purchase": 199.00,
+      "max_purchase": 10000.00,
+      "disclaimer": "Standard APR of 19.99% applies. Minimum monthly payments required."
+    },
+    {
+      "id": "SYNC-STD-24",
+      "name": "Standard 24 Month Plan",
+      "type": "standard",
+      "merchant": "HP",
+      "months": 24,
+      "apr": 22.99,
+      "min_purchase": 299.00,
+      "max_purchase": 10000.00,
+      "disclaimer": "Standard APR of 22.99% applies. Minimum monthly payments required."
+    },
+    {
+      "id": "CARECREDIT-0APR-6",
+      "name": "CareCredit 6 Months No Interest",
+      "type": "healthcare",
+      "merchant": "SmileCare Dental",
+      "months": 6,
+      "apr": 0.0,
+      "min_purchase": 200.00,
+      "max_purchase": 25000.00,
+      "disclaimer": "No Interest if paid in full in 6 months on purchases of $200 or more. Interest will be charged from the purchase date if the promotional balance is not paid in full within 6 months."
+    },
+    {
+      "id": "CARECREDIT-0APR-12",
+      "name": "CareCredit 12 Months No Interest",
+      "type": "healthcare",
+      "merchant": "BrightSmile Clinic",
+      "months": 12,
+      "apr": 0.0,
+      "min_purchase": 300.00,
+      "max_purchase": 25000.00,
+      "disclaimer": "No Interest if paid in full in 12 months on purchases of $300 or more. Interest will be charged from the purchase date if the promotional balance is not paid in full within 12 months."
+    },
+    {
+      "id": "CARECREDIT-0APR-18",
+      "name": "CareCredit 18 Months No Interest",
+      "type": "veterinary",
+      "merchant": "VetCare Animal Hospital",
+      "months": 18,
+      "apr": 0.0,
+      "min_purchase": 500.00,
+      "max_purchase": 25000.00,
+      "disclaimer": "No Interest if paid in full in 18 months on purchases of $500 or more. Interest will be charged from the purchase date if the promotional balance is not paid in full within 18 months."
+    },
+    {
+      "id": "CARECREDIT-STD-24",
+      "name": "CareCredit Extended Payment Plan",
+      "type": "healthcare",
+      "merchant": "SmileCare Dental",
+      "months": 24,
+      "apr": 17.90,
+      "min_purchase": 1000.00,
+      "max_purchase": 25000.00,
+      "disclaimer": "17.90% APR applies to extended payment plans. Minimum monthly payments required."
+    }
+  ],
+  "merchant_offers": {
+    "OfficeMax": ["SYNC-0APR-12", "SYNC-STD-12"],
+    "IKEA": ["SYNC-STD-12"],
+    "Apple Store": ["SYNC-0APR-18"],
+    "Dell": ["SYNC-0APR-24"],
+    "HP": ["SYNC-STD-24"],
+    "SmileCare Dental": ["CARECREDIT-0APR-6", "CARECREDIT-STD-24"],
+    "BrightSmile Clinic": ["CARECREDIT-0APR-12"],
+    "VetCare Animal Hospital": ["CARECREDIT-0APR-18"]
+  },
+  "metadata": {
+    "total_offers": 9,
+    "offer_types": ["promotional", "standard", "healthcare", "veterinary"],
+    "apr_range": {
+      "min": 0.0,
+      "max": 22.99
+    },
+    "term_range": {
+      "min_months": 6,
+      "max_months": 24
+    },
+    "last_updated": "2025-01-08T00:00:00Z"
+  }
+}

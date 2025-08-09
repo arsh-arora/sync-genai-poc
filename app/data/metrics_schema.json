@@ -1,0 +1,102 @@
+{
+  "schemas": {
+    "portfolio_spend": {
+      "table_name": "portfolio_spend",
+      "description": "Daily portfolio spending metrics by merchant and promo type",
+      "columns": {
+        "date": {"type": "date", "description": "Transaction date"},
+        "merchant": {"type": "string", "description": "Merchant name"},
+        "promo_type": {"type": "string", "description": "Promotional offer type"},
+        "spend_amount": {"type": "float", "description": "Total spend amount in USD"},
+        "transaction_count": {"type": "integer", "description": "Number of transactions"},
+        "avg_ticket": {"type": "float", "description": "Average transaction amount"},
+        "new_customers": {"type": "integer", "description": "New customer count"}
+      },
+      "primary_key": ["date", "merchant", "promo_type"],
+      "time_column": "date"
+    },
+    "delinquency_rates": {
+      "table_name": "delinquency_rates", 
+      "description": "Monthly delinquency rates by customer segment and vintage",
+      "columns": {
+        "month": {"type": "date", "description": "Month-end date"},
+        "segment": {"type": "string", "description": "Customer credit segment"},
+        "vintage": {"type": "string", "description": "Account vintage (origination quarter)"},
+        "total_accounts": {"type": "integer", "description": "Total active accounts"},
+        "delinq_30": {"type": "float", "description": "30+ days delinquency rate"},
+        "delinq_60": {"type": "float", "description": "60+ days delinquency rate"},
+        "delinq_90": {"type": "float", "description": "90+ days delinquency rate"},
+        "charge_off_rate": {"type": "float", "description": "Charge-off rate"}
+      },
+      "primary_key": ["month", "segment", "vintage"],
+      "time_column": "month"
+    },
+    "promo_performance": {
+      "table_name": "promo_performance",
+      "description": "Promotional campaign performance metrics",
+      "columns": {
+        "date": {"type": "date", "description": "Campaign date"},
+        "promo_id": {"type": "string", "description": "Promotion identifier"},
+        "promo_name": {"type": "string", "description": "Promotion name"},
+        "start_date": {"type": "date", "description": "Promotion start date"},
+        "end_date": {"type": "date", "description": "Promotion end date"},
+        "applications": {"type": "integer", "description": "Credit applications"},
+        "approvals": {"type": "integer", "description": "Credit approvals"},
+        "approval_rate": {"type": "float", "description": "Approval rate percentage"},
+        "activation_rate": {"type": "float", "description": "Card activation rate"},
+        "spend_per_approval": {"type": "float", "description": "Average spend per approval"}
+      },
+      "primary_key": ["date", "promo_id"],
+      "time_column": "date"
+    },
+    "credit_metrics": {
+      "table_name": "credit_metrics",
+      "description": "Credit portfolio health metrics",
+      "columns": {
+        "date": {"type": "date", "description": "Metric date"},
+        "product": {"type": "string", "description": "Credit product type"},
+        "outstanding_balance": {"type": "float", "description": "Total outstanding balance"},
+        "utilization_rate": {"type": "float", "description": "Credit utilization rate"},
+        "payment_rate": {"type": "float", "description": "Payment rate"},
+        "net_charge_offs": {"type": "float", "description": "Net charge-offs"},
+        "provision_expense": {"type": "float", "description": "Provision expense"},
+        "yield": {"type": "float", "description": "Portfolio yield percentage"}
+      },
+      "primary_key": ["date", "product"],
+      "time_column": "date"
+    }
+  },
+  "allowed_operations": {
+    "select": {
+      "functions": ["COUNT", "SUM", "AVG", "MIN", "MAX", "STDDEV"],
+      "aggregations": true,
+      "joins": false
+    },
+    "where": {
+      "operators": ["=", "!=", "<", "<=", ">", ">=", "IN", "LIKE", "BETWEEN"],
+      "functions": ["DATE", "MONTH", "YEAR", "QUARTER"]
+    },
+    "group_by": {
+      "allowed": true,
+      "max_columns": 3
+    },
+    "order_by": {
+      "allowed": true,
+      "max_columns": 2
+    },
+    "limit": {
+      "allowed": true,
+      "max_rows": 10000
+    }
+  },
+  "metric_definitions": {
+    "spend_amount": "Total dollar amount spent by customers using credit products",
+    "delinq_30": "Percentage of accounts 30+ days past due on payments", 
+    "approval_rate": "Percentage of credit applications that are approved",
+    "utilization_rate": "Average credit utilization across active accounts",
+    "charge_off_rate": "Percentage of accounts charged off as uncollectible",
+    "payment_rate": "Percentage of minimum payment made on time",
+    "portfolio_yield": "Annual percentage yield earned on outstanding balances",
+    "provision_expense": "Expected credit loss provisions for future charge-offs"
+  }
+}

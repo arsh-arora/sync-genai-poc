@@ -1,0 +1,104 @@
+{
+  "products": [
+    {
+      "sku": "DESK-001",
+      "title": "Executive Standing Desk with Drawers",
+      "merchant": "OfficeMax",
+      "price": 549.99,
+      "category": "furniture",
+      "features": ["height adjustable", "3 drawers", "cable management", "oak finish"],
+      "description": "Premium standing desk perfect for home office"
+    },
+    {
+      "sku": "DESK-002", 
+      "title": "Compact Writing Desk",
+      "merchant": "IKEA",
+      "price": 299.99,
+      "category": "furniture",
+      "features": ["compact design", "2 drawers", "white finish", "easy assembly"],
+      "description": "Simple and functional desk for small spaces"
+    },
+    {
+      "sku": "LAPTOP-001",
+      "title": "MacBook Air M2 13-inch",
+      "merchant": "Apple Store",
+      "price": 1199.99,
+      "category": "electronics",
+      "features": ["M2 chip", "8GB RAM", "256GB SSD", "13.6-inch display"],
+      "description": "Latest MacBook Air with M2 processor"
+    },
+    {
+      "sku": "LAPTOP-002",
+      "title": "Dell XPS 13 Laptop",
+      "merchant": "Dell",
+      "price": 999.99,
+      "category": "electronics", 
+      "features": ["Intel i7", "16GB RAM", "512GB SSD", "13.4-inch 4K display"],
+      "description": "Premium ultrabook with stunning display"
+    },
+    {
+      "sku": "LAPTOP-003",
+      "title": "HP Pavilion 15 Laptop",
+      "merchant": "HP",
+      "price": 699.99,
+      "category": "electronics",
+      "features": ["AMD Ryzen 5", "8GB RAM", "256GB SSD", "15.6-inch display"],
+      "description": "Reliable laptop for everyday computing"
+    },
+    {
+      "sku": "DENTAL-001",
+      "title": "Dental Crown Treatment",
+      "merchant": "SmileCare Dental",
+      "price": 1200.00,
+      "category": "healthcare",
+      "features": ["porcelain crown", "same-day service", "5-year warranty"],
+      "description": "High-quality dental crown restoration"
+    },
+    {
+      "sku": "DENTAL-002",
+      "title": "Teeth Whitening Treatment",
+      "merchant": "BrightSmile Clinic",
+      "price": 450.00,
+      "category": "healthcare",
+      "features": ["professional whitening", "1-hour treatment", "guaranteed results"],
+      "description": "Professional teeth whitening service"
+    },
+    {
+      "sku": "VET-001",
+      "title": "Pet Surgery - ACL Repair",
+      "merchant": "VetCare Animal Hospital",
+      "price": 2500.00,
+      "category": "veterinary",
+      "features": ["orthopedic surgery", "post-op care", "rehabilitation included"],
+      "description": "ACL repair surgery for dogs"
+    },
+    {
+      "sku": "PHONE-001",
+      "title": "iPhone 15 Pro",
+      "merchant": "Apple Store",
+      "price": 999.99,
+      "category": "electronics",
+      "features": ["A17 Pro chip", "128GB storage", "titanium design", "48MP camera"],
+      "description": "Latest iPhone with titanium design"
+    },
+    {
+      "sku": "TABLET-001",
+      "title": "iPad Air 5th Gen",
+      "merchant": "Apple Store", 
+      "price": 599.99,
+      "category": "electronics",
+      "features": ["M1 chip", "64GB storage", "10.9-inch display", "Apple Pencil compatible"],
+      "description": "Powerful tablet for creativity and productivity"
+    }
+  ],
+  "metadata": {
+    "total_products": 10,
+    "categories": ["furniture", "electronics", "healthcare", "veterinary"],
+    "merchants": ["OfficeMax", "IKEA", "Apple Store", "Dell", "HP", "SmileCare Dental", "BrightSmile Clinic", "VetCare Animal Hospital"],
+    "price_range": {
+      "min": 299.99,
+      "max": 2500.00
+    },
+    "last_updated": "2025-01-08T00:00:00Z"
+  }
+}
