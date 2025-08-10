@@ -9,6 +9,8 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -72,6 +74,41 @@
             border-radius: 4px;
             margin-left: 4px;
         }
+        
+        /* Enhanced markdown styles */
+        .markdown-content {
+            line-height: 1.6;
+        }
+        
+        .markdown-content pre {
+            margin: 1rem 0;
+            position: relative;
+        }
+        
+        .markdown-content code {
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+        }
+        
+        .markdown-content pre code {
+            color: #e6ffed !important;
+            background: transparent !important;
+            padding: 0 !important;
+            border-radius: 0 !important;
+        }
+        
+        /* Override highlight.js theme for better visibility */
+        .hljs {
+            background: #1e293b !important;
+            color: #e2e8f0 !important;
+        }
+        
+        .hljs-keyword { color: #f59e0b !important; }
+        .hljs-string { color: #10b981 !important; }
+        .hljs-comment { color: #6b7280 !important; }
+        .hljs-function { color: #3b82f6 !important; }
+        .hljs-variable { color: #8b5cf6 !important; }
+        .hljs-number { color: #f472b6 !important; }
+        .hljs-built_in { color: #06b6d4 !important; }
     </style>
 </head>
 <body class="h-full bg-slate-50">
@@ -79,6 +116,48 @@
 
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
+        const ReactMarkdown = window.ReactMarkdown;
+        
+        // Custom components for react-markdown
+        const markdownComponents = {
+            code: ({ node, inline, className, children, ...props }) => {
+                const match = /language-(\w+)/.exec(className || '');
+                const language = match ? match[1] : '';
+                
+                return !inline ? (
+                    <div className="my-4">
+                        {language && (
+                            <div className="bg-slate-100 px-3 py-1 text-xs font-mono text-slate-600 border-t border-l border-r border-slate-300 rounded-t">
+                                {language}
+                            </div>
+                        )}
+                        <pre className={`bg-slate-900 text-green-400 p-4 rounded${language ? '-b' : ''} overflow-x-auto`}>
+                            <code className={className} {...props}>
+                                {children}
+                            </code>
+                        </pre>
+                    </div>
+                ) : (
+                    <code className="bg-slate-100 text-slate-800 px-1.5 py-0.5 rounded text-sm font-mono" {...props}>
+                        {children}
+                    </code>
+                );
+            },
+            h1: ({ children }) => <h1 className="text-2xl font-bold text-slate-800 mt-8 mb-4">{children}</h1>,
+            h2: ({ children }) => <h2 className="text-xl font-bold text-slate-800 mt-6 mb-3">{children}</h2>,
+            h3: ({ children }) => <h3 className="text-lg font-semibold text-slate-800 mt-4 mb-2">{children}</h3>,
+            p: ({ children }) => <p className="mb-3 leading-relaxed">{children}</p>,
+            ul: ({ children }) => <ul className="list-disc list-inside mb-3 space-y-1">{children}</ul>,
+            ol: ({ children }) => <ol className="list-decimal list-inside mb-3 space-y-1">{children}</ol>,
+            li: ({ children }) => <li className="ml-2">{children}</li>,
+            strong: ({ children }) => <strong className="font-semibold text-slate-800">{children}</strong>,
+            em: ({ children }) => <em className="italic">{children}</em>,
+            blockquote: ({ children }) => (
+                <blockquote className="border-l-4 border-slate-300 pl-4 italic text-slate-600 mb-3">
+                    {children}
+                </blockquote>
+            )
+        };
 
         // Agent configurations
         const AGENTS = {
@@ -158,6 +237,8 @@
         function App() {
             const [selectedAgent, setSelectedAgent] = useState('smart');
             const [allowTavily, setAllowTavily] = useState(false);
+            const [allowLlmKnowledge, setAllowLlmKnowledge] = useState(true);
+            const [allowWebSearch, setAllowWebSearch] = useState(false);
             const [messages, setMessages] = useState([]);
             const [inputText, setInputText] = useState('');
             const [isLoading, setIsLoading] = useState(false);
@@ -168,8 +249,16 @@
             const [selectedPdfChunk, setSelectedPdfChunk] = useState(null);
             const messagesEndRef = useRef(null);
 
+            // Auto-scroll to bottom when messages change
             useEffect(() => {
                 messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+            }, [messages]);
+            
+            // Highlight code blocks after messages update
+            useEffect(() => {
+                if (window.hljs) {
+                    setTimeout(() => window.hljs.highlightAll(), 100);
+                }
             }, [messages]);
 
             const sendMessage = async () => {
@@ -188,7 +277,12 @@
                 try {
                     const endpoint = selectedAgent === 'smart' ? '/chat' : `/agent/${selectedAgent}`;
                     const payload = selectedAgent === 'smart' 
-                        ? { message: inputText, allow_tavily: allowTavily }
+                        ? { 
+                            message: inputText, 
+                            allow_tavily: allowTavily,
+                            allow_llm_knowledge: allowLlmKnowledge,
+                            allow_web_search: allowWebSearch
+                        }
                         : selectedAgent === 'imagegen'
                         ? { prompt: inputText, include_text: true, style_hints: [] }
                         : { query: inputText };
@@ -331,6 +425,10 @@
                     <Header 
                         allowTavily={allowTavily}
                         setAllowTavily={setAllowTavily}
+                        allowLlmKnowledge={allowLlmKnowledge}
+                        setAllowLlmKnowledge={setAllowLlmKnowledge}
+                        allowWebSearch={allowWebSearch}
+                        setAllowWebSearch={setAllowWebSearch}
                         onClear={clearChat}
                         onExport={exportJSON}
                     />
@@ -376,7 +474,7 @@
         }
 
         // Header Component
-        function Header({ allowTavily, setAllowTavily, onClear, onExport }) {
+        function Header({ allowTavily, setAllowTavily, allowLlmKnowledge, setAllowLlmKnowledge, allowWebSearch, setAllowWebSearch, onClear, onExport }) {
             return (
                 <header className="bg-white border-b border-slate-200 px-6 py-3">
                     <div className="flex items-center justify-between">
@@ -388,15 +486,35 @@
                                 <span className="px-2 py-1 text-xs bg-slate-100 text-slate-600 rounded-md">
                                     Local • No DB
                                 </span>
-                                <label className="flex items-center space-x-2 text-sm">
-                                    <input
-                                        type="checkbox"
-                                        checked={allowTavily}
-                                        onChange={(e) => setAllowTavily(e.target.checked)}
-                                        className="rounded text-teal-600 focus:ring-teal-500"
-                                    />
-                                    <span className="text-slate-600">Allow Tavily</span>
-                                </label>
+                                <div className="space-y-2">
+                                    <label className="flex items-center space-x-2 text-sm">
+                                        <input
+                                            type="checkbox"
+                                            checked={allowTavily}
+                                            onChange={(e) => setAllowTavily(e.target.checked)}
+                                            className="rounded text-teal-600 focus:ring-teal-500"
+                                        />
+                                        <span className="text-slate-600">Allow Tavily (legacy)</span>
+                                    </label>
+                                    <label className="flex items-center space-x-2 text-sm">
+                                        <input
+                                            type="checkbox"
+                                            checked={allowLlmKnowledge}
+                                            onChange={(e) => setAllowLlmKnowledge(e.target.checked)}
+                                            className="rounded text-blue-600 focus:ring-blue-500"
+                                        />
+                                        <span className="text-slate-600">LLM Knowledge Fallback</span>
+                                    </label>
+                                    <label className="flex items-center space-x-2 text-sm">
+                                        <input
+                                            type="checkbox"
+                                            checked={allowWebSearch}
+                                            onChange={(e) => setAllowWebSearch(e.target.checked)}
+                                            className="rounded text-purple-600 focus:ring-purple-500"
+                                        />
+                                        <span className="text-slate-600">Web Search Fallback</span>
+                                    </label>
+                                </div>
                             </div>
                         </div>
 
@@ -822,13 +940,12 @@
                             {/* Message Content */}
                             <div className="prose prose-sm max-w-none text-slate-700">
                                 {typeof message.content === 'string' ? (
-                                    <div dangerouslySetInnerHTML={{ 
-                                        __html: message.content
-                                            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                                            .replace(/\*(.*?)\*/g, '<em>$1</em>')
-                                            .replace(/\[REDACTED[^\]]*\]/g, '<span class="redacted-text">████████</span>')
-                                            .replace(/\n/g, '<br>')
-                                    }} />
+                                    <ReactMarkdown 
+                                        components={markdownComponents}
+                                        className="markdown-content"
+                                    >
+                                        {message.content.replace(/\[REDACTED[^\]]*\]/g, '████████')}
+                                    </ReactMarkdown>
                                 ) : (
                                     <pre className="text-sm bg-slate-50 p-3 rounded border overflow-x-auto">
                                         {JSON.stringify(message.content, null, 2)}
@@ -900,6 +1017,24 @@
                                             ({index + 1})
                                         </button>
                                     ))}
+                                </div>
+                            )}
+                            
+                            {/* Fallback Information */}
+                            {message.fallback_used && (
+                                <div className="mt-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+                                    <div className="flex items-center space-x-2 text-sm">
+                                        <i className="fas fa-route text-blue-600"></i>
+                                        <span className="font-medium text-blue-800">
+                                            Fallback Used: {message.fallback_used.replace('_', ' ')}
+                                        </span>
+                                    </div>
+                                    {message.document_assessment && (
+                                        <div className="mt-1 text-xs text-blue-700">
+                                            <div>Quality Score: {(message.document_assessment.document_quality_score * 100).toFixed(0)}%</div>
+                                            <div>Assessment: {message.document_assessment.reason}</div>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>

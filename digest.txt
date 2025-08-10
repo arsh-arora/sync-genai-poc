@@ -1,8 +1,16 @@
 Directory structure:
 └── synch-genai-poc/
     ├── README.md
+    ├── AGENT_ARCHITECTURE.md
+    ├── index.html
     ├── main.py
+    ├── package.json
+    ├── postcss.config.js
     ├── requirements.txt
+    ├── tailwind.config.js
+    ├── tsconfig.json
+    ├── tsconfig.node.json
+    ├── vite.config.ts
     ├── app/
     │   ├── __init__.py
     │   ├── router.py
@@ -51,21 +59,435 @@ Directory structure:
     │   └── ui/
     │       ├── index.html
     │       └── modern.html
-    ├── cline_docs/
-    │   ├── codebaseSummary.md
-    │   ├── currentTask.md
-    │   ├── projectRoadmap.md
-    │   └── techStack.md
-    └── metrics/
-        ├── credit_metrics.csv
-        ├── delinquency_rates.csv
-        ├── portfolio_spend.csv
-        └── promo_performance.csv
+    ├── metrics/
+    │   ├── credit_metrics.csv
+    │   ├── delinquency_rates.csv
+    │   ├── portfolio_spend.csv
+    │   └── promo_performance.csv
+    └── src/
+        ├── App.tsx
+        ├── index.css
+        ├── main.tsx
+        ├── types.ts
+        ├── components/
+        │   ├── ChatMessage.tsx
+        │   ├── ChatPane.tsx
+        │   ├── Header.tsx
+        │   ├── LeftRail.tsx
+        │   ├── MarkdownRenderer.tsx
+        │   └── RightInspector.tsx
+        └── config/
+            └── agents.ts
 
 ================================================
 FILE: README.md
 ================================================
-[Binary file]
+# Synch GenAI PoC
+
+A complete GenAI-powered financial services platform with 8 specialized AI agents, intelligent document processing, and enhanced markdown rendering.
+
+## Quick Start
+
+### Install Dependencies
+```bash
+# Install Node.js dependencies
+npm install
+
+# Install Python dependencies (if not already done)
+pip install -r requirements.txt
+```
+
+### Development
+```bash
+# Start backend server (Terminal 1)
+python main.py
+
+# Start frontend development server (Terminal 2)
+npm run dev
+```
+
+### Production
+```bash
+# Build frontend
+npm run build
+
+# Start production server
+python main.py
+```
+
+## Features
+
+### 🧠 Intelligent Fallback System
+- **LLM Knowledge Fallback**: Uses the LLM's training knowledge when documents are insufficient
+- **Web Search Integration**: Tavily search for current information
+- **Smart Document Assessment**: AI-powered evaluation of document relevance and coverage
+
+### 🎨 Enhanced UI
+- **React + TypeScript**: Modern, type-safe frontend with proper markdown rendering
+- **Syntax Highlighting**: Beautiful code blocks with language detection
+- **Drag & Drop PDF**: Upload documents directly in chat
+- **Fallback Indicators**: Visual feedback for knowledge sources used
+
+### 🤖 8 Specialized AI Agents
+- **Smart Chat**: AI router with intelligent fallbacks
+- **OfferPilot**: Product search with financing
+- **Dispute Copilot**: Credit card dispute assistance
+- **Collections**: Hardship and payment plans
+- **DevCopilot**: Code generation and API docs
+- **CareCredit**: Medical expense analysis
+- **Narrator**: Portfolio analytics
+- **ImageGen**: AI image generation
+
+## Environment Variables
+
+Create `.env` file with:
+```bash
+GOOGLE_API_KEY=your_gemini_api_key
+VISION_AGENT_API_KEY=your_landing_ai_key
+TAVILY_API_KEY=your_tavily_key  # Optional
+ALLOW_TAVILY=true  # Optional
+```
+
+## Architecture
+
+- **Backend**: FastAPI with intelligent RAG and fallback systems
+- **Frontend**: React + TypeScript with proper markdown rendering
+- **AI**: Google Gemini with document assessment and knowledge fallbacks
+- **PDF Processing**: Landing AI with bounding box extraction
+- **Security**: PII redaction and TrustShield content filtering
+
+
+================================================
+FILE: AGENT_ARCHITECTURE.md
+================================================
+# Synch GenAI PoC - Agent Architecture Documentation
+
+## System Overview
+
+The Synch GenAI PoC is a comprehensive financial services chatbot platform with 8 specialized AI agents, intelligent routing, and PDF processing capabilities. The system is designed for defensive security applications with built-in PII protection and fraud detection.
+
+## Agent Architecture Flow
+
+```mermaid
+flowchart TD
+    %% User Input Layer
+    User[👤 User Input] --> UI[🖥️ React Frontend]
+    
+    %% Routing Layer
+    UI --> Router{🧭 Smart Router}
+    Router --> |"Gemini Classification"| GeminiClass[🤖 Gemini Classifier]
+    GeminiClass --> |"confidence < 0.6"| KeywordFallback[📝 Keyword Analysis]
+    KeywordFallback --> RouterDecision[📊 Final Route Decision]
+    GeminiClass --> |"confidence >= 0.6"| RouterDecision
+    
+    %% Smart Chat Special Flow
+    Router --> |"smart agent"| SmartChat[🧠 Smart Chat Agent]
+    SmartChat --> |"Route to best agent"| AutoRoute[🔄 Auto-route to specialist]
+    AutoRoute --> Agent1[Agent Selection]
+    
+    %% Agent Layer
+    RouterDecision --> Agent1
+    Agent1 --> |"offer"| OfferPilot[🏷️ OfferPilot]
+    Agent1 --> |"trust"| TrustShield[🛡️ TrustShield]
+    Agent1 --> |"dispute"| DisputeCopilot[⚖️ Dispute Copilot]
+    Agent1 --> |"collections"| Collections[💳 Collections Agent]
+    Agent1 --> |"devcopilot"| DevCopilot[💻 DevCopilot]
+    Agent1 --> |"carecredit"| CareCredit[❤️ CareCredit]
+    Agent1 --> |"narrator"| Narrator[📊 Portfolio Narrator]
+    Agent1 --> |"imagegen"| ImageGen[🎨 Image Generator]
+    
+    %% RAG System
+    subgraph RAG["🗄️ RAG Knowledge Base"]
+        DocStore[(📚 Document Store)]
+        Embedder[🔢 Gemini Embeddings]
+        Retriever[🔍 Vector Retriever]
+        MarkdownDocs[📄 Markdown Documents]
+        PDFDocs[📄 PDF Documents]
+    end
+    
+    %% PDF Processing Pipeline
+    PDFUpload[📤 PDF Upload] --> PDFProcessor[🔄 LandingAI PDF Processor]
+    PDFProcessor --> PDFChunks[📑 Text Chunks + Bounding Boxes]
+    PDFChunks --> DocStore
+    
+    %% Agent Processing
+    OfferPilot --> RAG
+    TrustShield --> RAG
+    TrustShield --> PII[🔐 PII Detection/Redaction]
+    DisputeCopilot --> RAG
+    Collections --> RAG
+    DevCopilot --> APIRef[📖 API Reference]
+    CareCredit --> RAG
+    Narrator --> RAG
+    ImageGen --> StableDiffusion[🎨 Stable Diffusion API]
+    
+    %% Fallback System
+    subgraph Fallbacks["🔄 Intelligent Fallbacks"]
+        LLMFallback[🧠 LLM Knowledge Fallback]
+        WebSearch[🌐 Web Search Fallback]
+        TavilyLegacy[🔍 Tavily Search Legacy]
+    end
+    
+    SmartChat --> |"insufficient docs"| Fallbacks
+    
+    %% Response Processing
+    OfferPilot --> ResponseProc[📤 Response Processing]
+    TrustShield --> ResponseProc
+    DisputeCopilot --> ResponseProc
+    Collections --> ResponseProc
+    DevCopilot --> ResponseProc
+    CareCredit --> ResponseProc
+    Narrator --> ResponseProc
+    ImageGen --> ResponseProc
+    
+    ResponseProc --> |"with citations"| UI
+    ResponseProc --> |"confidence score"| UI
+    ResponseProc --> |"source tracking"| UI
+    
+    %% UI Components
+    UI --> ChatPane[💬 Chat Interface]
+    UI --> AgentSelector[🎛️ Agent Selector]
+    UI --> PDFViewer[📄 PDF Viewer]
+    UI --> CitationsPanel[📝 Citations Panel]
+    UI --> ToolTrace[🔧 Tool Trace Panel]
+    
+    %% Styling
+    classDef userLayer fill:#e1f5fe
+    classDef routingLayer fill:#f3e5f5
+    classDef agentLayer fill:#e8f5e8
+    classDef ragLayer fill:#fff3e0
+    classDef uiLayer fill:#fce4ec
+    
+    class User,UI userLayer
+    class Router,GeminiClass,KeywordFallback,RouterDecision,SmartChat,AutoRoute routingLayer
+    class OfferPilot,TrustShield,DisputeCopilot,Collections,DevCopilot,CareCredit,Narrator,ImageGen agentLayer
+    class RAG,DocStore,Embedder,Retriever,MarkdownDocs,PDFDocs ragLayer
+    class ChatPane,AgentSelector,PDFViewer,CitationsPanel,ToolTrace uiLayer
+```
+
+## Agent Detailed Specifications
+
+### 🧠 Smart Chat Agent
+- **Purpose**: Intelligent routing hub that analyzes queries and routes to the most appropriate specialist agent
+- **Key Features**:
+  - Uses Gemini LLM for intent classification
+  - Confidence-based routing with fallback mechanisms
+  - Supports LLM knowledge and web search fallbacks when RAG documents are insufficient
+  - Real-time document assessment for relevance
+- **Fallback Options**: LLM Knowledge, Web Search, Legacy Tavily
+- **Example Query**: *"Find a standing desk under ₹50k with 12-mo 0% APR"*
+
+### 🏷️ OfferPilot
+- **Purpose**: Product search and financing options specialist
+- **Core Functions**:
+  - Product discovery with budget constraints
+  - Financing option analysis (APR, payment plans)
+  - Promotional offer matching
+  - Cross-sell opportunity identification
+- **Integration**: Connected to RAG system for product knowledge
+- **Example Query**: *"Show me wireless headphones under $200"*
+
+### 🛡️ TrustShield
+- **Purpose**: Real-time fraud detection and PII protection system
+- **Advanced Capabilities**:
+  - Multi-layer scam pattern recognition
+  - PII detection and automatic redaction using Microsoft Presidio
+  - Risk scoring with confidence metrics
+  - Safety guidance recommendations
+  - Threat evidence compilation
+- **Security Features**: Built-in defensive measures, no malicious code generation
+- **Example Query**: *"Someone called asking for my SSN to verify my account"*
+
+### ⚖️ Dispute Copilot
+- **Purpose**: Credit card and transaction dispute assistance
+- **Specialized Functions**:
+  - Dispute classification and merit analysis
+  - Evidence collection guidance
+  - Chargeback process navigation
+  - Documentation requirement checklists
+- **Integration**: RAG-powered with dispute resolution knowledge base
+- **Example Query**: *"I was charged twice for the same purchase"*
+
+### 💳 Collections Agent
+- **Purpose**: Payment assistance and hardship support
+- **Customer-Focused Features**:
+  - Payment plan options analysis
+  - Hardship assessment and solutions
+  - Customer state tracking (balance, APR, bucket status)
+  - Empathetic communication patterns
+- **Data Integration**: Customer account state analysis
+- **Example Query**: *"I need help with payment plan options"*
+
+### 💻 DevCopilot
+- **Purpose**: Technical support and API documentation assistant
+- **Developer Tools**:
+  - Code generation for payment processing
+  - API endpoint documentation
+  - Integration guidance and troubleshooting
+  - SDK usage examples
+  - Multi-language support (Python, JavaScript, Java, etc.)
+- **Knowledge Base**: Technical documentation and best practices
+- **Example Query**: *"Generate Python code for payment processing"*
+
+### ❤️ CareCredit
+- **Purpose**: Healthcare and medical expense analysis specialist
+- **Healthcare Focus**:
+  - Medical treatment estimate analysis
+  - Dental procedure cost breakdowns
+  - Healthcare financing option evaluation
+  - Insurance coverage assessment
+- **Specialized Knowledge**: Medical billing and healthcare financing
+- **Example Query**: *"Analyze this dental treatment estimate"*
+
+### 📊 Portfolio Narrator
+- **Purpose**: Business intelligence and portfolio analytics
+- **Analytics Capabilities**:
+  - Spending pattern analysis
+  - Portfolio performance insights
+  - Trend identification and explanation
+  - Business metrics interpretation
+- **Data Sources**: Financial data and portfolio information
+- **Example Query**: *"Why did spend drop after 2025-07-31?"*
+
+### 🎨 ImageGen Agent
+- **Purpose**: AI-powered visual content generation
+- **Creative Features**:
+  - Text-to-image generation using Stable Diffusion
+  - Style customization options
+  - Marketing visual creation
+  - Concept visualization
+- **API Integration**: Stable Diffusion API
+- **Example Query**: *"Create a futuristic city with flying cars and neon lights"*
+
+## System Architecture Components
+
+### 🧭 Intelligent Routing System
+- **Primary**: Gemini-powered intent classification
+- **Fallback**: Keyword-based pattern matching
+- **Confidence Thresholds**: Dynamic routing based on confidence scores
+- **Default Routing**: TrustShield for security when confidence is low
+
+### 🗄️ RAG (Retrieval-Augmented Generation) System
+- **Document Store**: ChromaDB for vector storage
+- **Embeddings**: Google Gemini embedding model
+- **Retriever**: Semantic similarity search
+- **Content Types**: Markdown documents, PDF processing with bounding boxes
+
+### 📄 PDF Processing Pipeline
+- **Processor**: LandingAI PDF processing service
+- **Features**: Text extraction, bounding box detection, chunk segmentation
+- **Integration**: Automatic indexing into RAG system
+- **UI**: Interactive PDF viewer with clickable text chunks
+
+### 🔄 Fallback Mechanisms
+1. **Document Assessment**: LLM evaluates if retrieved documents contain sufficient information
+2. **LLM Knowledge**: Falls back to pre-trained model knowledge when documents insufficient
+3. **Web Search**: Real-time web search for current information
+4. **Legacy Tavily**: Backup search integration
+
+### 🔐 Security & Privacy Features
+- **PII Detection**: Automatic detection using Microsoft Presidio
+- **PII Redaction**: Real-time anonymization of sensitive data
+- **Defensive Design**: All agents designed for defensive security use only
+- **Fraud Detection**: Multi-pattern scam and threat detection
+
+## API Endpoints
+
+### Smart Chat Endpoints
+- `POST /chat` - Main chat interface with fallback options
+- `POST /agent/{agent_name}` - Direct agent invocation
+
+### PDF Management
+- `POST /upload/pdf` - PDF upload and processing
+- `GET /pdf/{pdf_id}/page/{page_num}` - Get PDF page with annotations
+- `GET /pdf/{pdf_id}/info` - Get PDF metadata and chunks
+
+### Agent-Specific Endpoints
+- `POST /agent/offerpilot` - Product search queries
+- `POST /agent/dispute` - Dispute assistance
+- `POST /agent/collections` - Payment assistance  
+- `POST /agent/devcopilot` - Technical support
+- `POST /agent/carecredit` - Healthcare analysis
+- `POST /agent/narrator` - Business analytics
+- `POST /agent/imagegen` - Image generation
+- `POST /agent/trustshield` - Fraud detection
+
+## Frontend Architecture
+
+### React Components
+- **ChatPane**: Main conversation interface with PDF drag-and-drop
+- **LeftRail**: Agent selection sidebar with examples
+- **RightInspector**: Tabbed panel for citations, tool traces, and PDF viewer
+- **Header**: Settings controls with elegant toggle switches
+
+### Key Features
+- **Real-time Chat**: WebSocket-style communication with loading states
+- **PDF Integration**: Drag-and-drop upload with interactive viewer
+- **Agent Switching**: Seamless switching between specialized agents
+- **Citation Tracking**: Source attribution for all responses
+- **Tool Tracing**: Visibility into agent decision-making process
+
+## Deployment & Configuration
+
+### Environment Requirements
+- Python 3.8+ with FastAPI
+- Node.js 16+ with React/TypeScript
+- Google Gemini API access
+- LandingAI API for PDF processing
+- Optional: Tavily API for web search
+
+### Development Workflow
+```bash
+# Backend
+python main.py
+
+# Frontend
+npm run dev
+```
+
+### Production Considerations
+- CORS configuration for cross-origin requests
+- Environment variable management
+- API key security
+- Rate limiting and usage monitoring
+
+## Security & Compliance
+
+### Defensive Security Focus
+- **PII Protection**: Automatic detection and redaction
+- **Fraud Prevention**: Real-time threat analysis
+- **No Malicious Code**: Designed exclusively for defensive use
+- **Source Tracking**: Full audit trail of information sources
+
+### Privacy Features
+- **Local Processing**: No persistent user data storage
+- **Redaction**: Sensitive information automatically masked
+- **Citations**: Transparent source attribution
+- **User Control**: Fallback options user-configurable
+
+This architecture provides a robust, scalable, and secure foundation for financial services AI assistance with specialized expertise across multiple domains.
+
+
+================================================
+FILE: index.html
+================================================
+<!doctype html>
+<html lang="en" class="h-full">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GenAI Studio (Hackathon PoC)</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  </head>
+  <body class="h-full bg-slate-50">
+    <div id="root" class="h-full"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
 
 
 ================================================
@@ -83,16 +505,18 @@ import time
 from pathlib import Path
 from typing import Optional, Dict, Any, Union
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request, Response, UploadFile, File
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 import json
 
 from app.rag.core import init_docstore, GeminiEmbedder, index_markdown, build_retriever, retrieve
-from app.llm.gemini import chat_with_context
+from app.llm.gemini import chat_with_context, chat_with_context_and_fallback
 from app.tools.tavily_search import web_search_into_docstore, WebDisabled
 from app.router import route
 from app.agents.trustshield import TrustShield
@@ -115,13 +539,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Initialize FastAPI app
-app = FastAPI(
-    title="Synch GenAI PoC",
-    description="Complete GenAI-powered financial services platform",
-    version="2.0.0"
-)
-
 # Global components
 docstore = None
 embedder = None
@@ -129,6 +546,58 @@ retriever = None
 agents = {}  # Agent registry
 pdf_processor = None
 uploaded_pdfs = {}  # Store processed PDFs
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Initialize components on startup and cleanup on shutdown"""
+    global docstore, embedder, retriever, agents, pdf_processor
+    
+    try:
+        logger.info("Initializing document store...")
+        docstore = init_docstore()
+        
+        logger.info("Initializing Gemini embedder...")
+        embedder = GeminiEmbedder()
+        
+        logger.info("Indexing markdown documents...")
+        doc_count = index_markdown(docstore, embedder)
+        logger.info(f"Indexed {doc_count} document chunks")
+        
+        logger.info("Building retriever...")
+        retriever = build_retriever(docstore)
+        
+        logger.info("Initializing PDF processor...")
+        pdf_processor = LandingAIPDFProcessor()
+        
+        logger.info("Initializing agents...")
+        agents = {
+            'trustshield': TrustShield(docstore=docstore, embedder=embedder, retriever=retriever),
+            'offerpilot': OfferPilot(docstore=docstore, embedder=embedder, retriever=retriever),
+            'dispute': DisputeCopilot(docstore=docstore, embedder=embedder, retriever=retriever),
+            'collections': CollectionsAdvisor(docstore=docstore, embedder=embedder, retriever=retriever),
+            'devcopilot': DevCopilot(),
+            'carecredit': CareCredit(docstore=docstore, embedder=embedder, retriever=retriever),
+            'narrator': PortfolioIntelNarrator(docstore=docstore, embedder=embedder, retriever=retriever),
+            'imagegen': ImageGenAgent(),
+        }
+        
+        logger.info(f"Application startup complete - {len(agents)} agents initialized")
+    except Exception as e:
+        logger.error(f"Failed to initialize application: {e}")
+        raise
+    
+    yield
+    
+    # Cleanup on shutdown
+    logger.info("Application shutdown complete")
+
+# Initialize FastAPI app with lifespan
+app = FastAPI(
+    title="Synch GenAI PoC",
+    description="Complete GenAI-powered financial services platform",
+    version="2.0.0",
+    lifespan=lifespan
+)
 
 # PII Redactor Middleware
 class PIIRedactorMiddleware(BaseHTTPMiddleware):
@@ -231,53 +700,27 @@ class TrustShieldMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         return response
 
-# Add middleware (order matters - PII redaction first, then TrustShield)
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://localhost:8000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Add middleware (order matters - CORS first, then PII redaction, then TrustShield)
 app.add_middleware(TrustShieldMiddleware)
 app.add_middleware(PIIRedactorMiddleware)
 
-@app.on_event("startup")
-async def startup_event():
-    """Initialize components on startup"""
-    global docstore, embedder, retriever, agents, pdf_processor
-    
-    try:
-        logger.info("Initializing document store...")
-        docstore = init_docstore()
-        
-        logger.info("Initializing Gemini embedder...")
-        embedder = GeminiEmbedder()
-        
-        logger.info("Indexing markdown documents...")
-        doc_count = index_markdown(docstore, embedder)
-        logger.info(f"Indexed {doc_count} document chunks")
-        
-        logger.info("Building retriever...")
-        retriever = build_retriever(docstore)
-        
-        logger.info("Initializing PDF processor...")
-        pdf_processor = LandingAIPDFProcessor()
-        
-        logger.info("Initializing agents...")
-        agents = {
-            'trustshield': TrustShield(docstore=docstore, embedder=embedder, retriever=retriever),
-            'offerpilot': OfferPilot(docstore=docstore, embedder=embedder, retriever=retriever),
-            'dispute': DisputeCopilot(docstore=docstore, embedder=embedder, retriever=retriever),
-            'collections': CollectionsAdvisor(docstore=docstore, embedder=embedder, retriever=retriever),
-            'devcopilot': DevCopilot(),
-            'carecredit': CareCredit(docstore=docstore, embedder=embedder, retriever=retriever),
-            'narrator': PortfolioIntelNarrator(docstore=docstore, embedder=embedder, retriever=retriever),
-            'imagegen': ImageGenAgent(),
-        }
-        
-        logger.info(f"Application startup complete - {len(agents)} agents initialized")
-    except Exception as e:
-        logger.error(f"Failed to initialize application: {e}")
-        raise
+# Startup event handler has been moved to lifespan function above
 
 # Request/Response models
 class ChatRequest(BaseModel):
     message: str
     allow_tavily: Optional[bool] = False
+    allow_llm_knowledge: Optional[bool] = True
+    allow_web_search: Optional[bool] = False
 
 class ChatResponse(BaseModel):
     response: str
@@ -285,6 +728,8 @@ class ChatResponse(BaseModel):
     confidence: float
     sources: list[str] = []
     used_tavily: bool = False
+    fallback_used: Optional[str] = None
+    document_assessment: Optional[dict] = None
     image_data: Optional[str] = None
     image_format: Optional[str] = None
 
@@ -325,16 +770,26 @@ class ImageGenRequest(BaseModel):
     include_text: Optional[bool] = True
     style_hints: Optional[list[str]] = None
 
+# Serve static files from React build (only if directory exists)
+if Path("dist/assets").exists():
+    app.mount("/assets", StaticFiles(directory="dist/assets"), name="assets")
+
 # UI Routes
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    """Serve the modern React UI"""
+    """Serve the React UI"""
     try:
-        ui_path = Path("app/ui/modern.html")
+        # Try to serve the built React app first
+        ui_path = Path("dist/index.html")
         if ui_path.exists():
             return HTMLResponse(content=ui_path.read_text(encoding='utf-8'), status_code=200)
-        else:
-            return HTMLResponse(content="<h1>Modern UI not found</h1><p>Please check app/ui/modern.html</p>", status_code=404)
+        
+        # Fallback to the old HTML version
+        fallback_path = Path("app/ui/modern.html")
+        if fallback_path.exists():
+            return HTMLResponse(content=fallback_path.read_text(encoding='utf-8'), status_code=200)
+        
+        return HTMLResponse(content="<h1>UI not found</h1><p>Please run 'npm run build' to build the React app</p>", status_code=404)
     except Exception as e:
         return HTMLResponse(content=f"<h1>Error loading UI</h1><p>{str(e)}</p>", status_code=500)
 
@@ -405,18 +860,14 @@ async def smart_chat(request: ChatRequest):
                 sources = ["Image generation failed"]
             
         else:
-            # Fallback to RAG-based response
+            # Fallback to RAG-based response with intelligent fallbacks
             retrieved_docs = retrieve(retriever, embedder, request.message, k=5)
             
-            # Check for Tavily usage - trigger if enabled and low quality/relevance results
-            should_use_web = (
-                request.allow_tavily and 
+            # Check for Tavily web search (legacy support)
+            if (request.allow_tavily and 
                 os.getenv("ALLOW_TAVILY", "false").lower() == "true" and
                 (len(retrieved_docs) < 2 or 
-                 (len(retrieved_docs) > 0 and all(doc.get('score', 0) < 0.7 for doc in retrieved_docs)))
-            )
-            
-            if should_use_web:
+                 (len(retrieved_docs) > 0 and all(doc.get('score', 0) < 0.7 for doc in retrieved_docs)))):
                 try:
                     web_docs = web_search_into_docstore(docstore, embedder, request.message, max_results=3)
                     used_tavily = len(web_docs) > 0
@@ -432,12 +883,37 @@ async def smart_chat(request: ChatRequest):
                     logger.warning(f"Web search failed: {e}")
                     used_tavily = False
             
+            # Use intelligent fallback system
+            fallback_result = chat_with_context_and_fallback(
+                query=request.message,
+                context_documents=retrieved_docs,
+                allow_llm_knowledge=request.allow_llm_knowledge,
+                allow_web_search=request.allow_web_search
+            )
+            
+            response_text = fallback_result["response"]
+            fallback_used = fallback_result["fallback_used"]
+            confidence = fallback_result["confidence"]
+            document_assessment = fallback_result["document_assessment"]
+            
+            # Build sources list with assessment info
+            sources = []
             if retrieved_docs:
-                response_text = chat_with_context(request.message, retrieved_docs)
-                sources = [f"{doc['filename']} - Score: {doc['score']:.3f}" for doc in retrieved_docs[:3]]
-            else:
-                response_text = "I couldn't find relevant information to answer your question."
-                sources = []
+                sources.extend([f"{doc['filename']} - Score: {doc['score']:.3f}" for doc in retrieved_docs[:3]])
+            
+            # Add fallback information
+            if fallback_used:
+                sources.append(f"🔄 Fallback used: {fallback_used}")
+                sources.append(f"📊 Document quality: {document_assessment.get('document_quality_score', 0):.2f}")
+            
+            # Add document assessment details
+            if document_assessment:
+                assessment_reason = document_assessment.get('reason', 'No assessment')
+                sources.append(f"🔍 Assessment: {assessment_reason}")
+        
+        # Store fallback info for response
+        fallback_used_final = fallback_used if 'fallback_used' in locals() else None
+        document_assessment_final = document_assessment if 'document_assessment' in locals() else None
         
         # Add routing info to sources
         sources.insert(0, f"🎯 Routed to: {routed_agent} ({confidence:.1%} confidence)")
@@ -447,7 +923,9 @@ async def smart_chat(request: ChatRequest):
             agent=routed_agent,
             confidence=confidence,
             sources=sources,
-            used_tavily=used_tavily
+            used_tavily=used_tavily,
+            fallback_used=fallback_used_final,
+            document_assessment=document_assessment_final
         )
         
     except Exception as e:
@@ -1304,6 +1782,49 @@ if __name__ == "__main__":
 
 
 ================================================
+FILE: package.json
+================================================
+{
+  "name": "synch-genai-poc",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-markdown": "^9.0.1",
+    "rehype-highlight": "^7.0.0",
+    "remark-gfm": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.66",
+    "@types/react-dom": "^18.2.22",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.19",
+    "postcss": "^8.4.38",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5.2.2",
+    "vite": "^5.2.0"
+  }
+}
+
+
+================================================
+FILE: postcss.config.js
+================================================
+export default {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+}
+
+
+================================================
 FILE: requirements.txt
 ================================================
 # Core FastAPI dependencies
@@ -1335,6 +1856,109 @@ spacy==3.8.2
 # PDF Processing
 PyMuPDF==1.24.14
 
+
+
+================================================
+FILE: tailwind.config.js
+================================================
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: [
+    "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx}",
+  ],
+  theme: {
+    extend: {
+      fontFamily: {
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+      },
+      animation: {
+        'fade-in': 'fadeIn 0.3s ease-in-out',
+        'slide-up': 'slideUp 0.3s ease-out',
+      },
+      keyframes: {
+        fadeIn: {
+          '0%': { opacity: '0' },
+          '100%': { opacity: '1' },
+        },
+        slideUp: {
+          '0%': { opacity: '0', transform: 'translateY(20px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        }
+      }
+    },
+  },
+  plugins: [],
+}
+
+
+================================================
+FILE: tsconfig.json
+================================================
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+
+    /* Linting */
+    "strict": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["src"],
+  "references": [{ "path": "./tsconfig.node.json" }]
+}
+
+
+================================================
+FILE: tsconfig.node.json
+================================================
+{
+  "compilerOptions": {
+    "composite": true,
+    "skipLibCheck": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowSyntheticDefaultImports": true
+  },
+  "include": ["vite.config.ts"]
+}
+
+
+================================================
+FILE: vite.config.ts
+================================================
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    port: 3000,
+    proxy: {
+      '/chat': 'http://localhost:8000',
+      '/agent': 'http://localhost:8000',
+      '/upload': 'http://localhost:8000',
+      '/pdf': 'http://localhost:8000',
+      '/healthz': 'http://localhost:8000',
+    }
+  },
+  build: {
+    outDir: 'dist',
+  },
+})
 
 
 ================================================
@@ -10486,6 +11110,351 @@ def classify_query(query: str, categories: List[str]) -> str:
     # Return first category as fallback
     return categories[0] if categories else "general"
 
+def chat_with_context_and_fallback(
+    query: str,
+    context_documents: List[Dict[str, Any]],
+    allow_llm_knowledge: bool = True,
+    allow_web_search: bool = False,
+    system_prompt: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Generate chat response with fallback options when documents are insufficient
+    
+    Args:
+        query: User's query
+        context_documents: List of retrieved documents with 'snippet' and 'source' keys
+        allow_llm_knowledge: Whether to fallback to LLM's own knowledge if documents insufficient
+        allow_web_search: Whether to use web search if documents insufficient
+        system_prompt: Optional system prompt
+        
+    Returns:
+        Dictionary with response, fallback_used, and confidence
+    """
+    # Check document quality/relevance intelligently
+    doc_quality = assess_document_quality(query, context_documents)
+    
+    fallback_used = None
+    confidence = doc_quality["confidence"]
+    
+    if doc_quality["sufficient"]:
+        # Use regular RAG response
+        response = chat_with_context(query, context_documents, system_prompt)
+    else:
+        # Documents are insufficient - use fallback
+        if allow_llm_knowledge:
+            response = chat_with_llm_knowledge(query, context_documents, system_prompt)
+            fallback_used = "llm_knowledge"
+            confidence = max(0.6, confidence)  # Boost confidence for LLM knowledge fallback
+        elif allow_web_search:
+            try:
+                # Import here to avoid circular dependency
+                from app.tools.tavily_search import web_search_into_docstore
+                
+                # Perform web search (this should be done in the main endpoint, but for now we'll indicate it)
+                response = chat_with_web_search_fallback(query, context_documents, system_prompt)
+                fallback_used = "web_search"
+                confidence = 0.7  # Higher confidence for web search results
+            except ImportError:
+                response = f"Based on the documents provided, there is insufficient information to answer '{query}'. Web search functionality is not available."
+                fallback_used = "web_search_unavailable"
+                confidence = 0.3
+        else:
+            response = f"Based on the documents provided, there is insufficient information to answer '{query}'. Consider enabling fallback options (LLM knowledge or web search) to access additional information sources."
+            fallback_used = "none"
+            confidence = 0.2
+    
+    return {
+        "response": response,
+        "fallback_used": fallback_used,
+        "confidence": confidence,
+        "document_assessment": doc_quality
+    }
+
+def assess_document_quality(query: str, context_documents: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Intelligently assess whether retrieved documents are sufficient to answer the query
+    
+    Args:
+        query: User's query
+        context_documents: Retrieved documents
+        
+    Returns:
+        Dictionary with assessment results
+    """
+    if not context_documents:
+        return {
+            "sufficient": False,
+            "confidence": 0.0,
+            "reason": "No documents found",
+            "document_quality_score": 0.0,
+            "semantic_relevance": 0.0,
+            "coverage_score": 0.0
+        }
+    
+    # Use LLM to assess document relevance and coverage
+    assessment_prompt = f"""
+Analyze whether these documents contain sufficient information to answer the user's question comprehensively.
+
+Question: {query}
+
+Documents:
+{_format_docs_for_assessment(context_documents)}
+
+Rate the documents on a scale of 0-10 for:
+1. Semantic Relevance: How well do the documents relate to the question?
+2. Information Coverage: How completely do they address what the user is asking?
+3. Answer Sufficiency: Can the question be fully answered using only these documents?
+
+Respond in this exact JSON format:
+{{
+    "semantic_relevance": <0-10>,
+    "coverage_score": <0-10>, 
+    "answer_sufficiency": <0-10>,
+    "sufficient": <true/false>,
+    "reasoning": "<brief explanation>"
+}}
+"""
+    
+    try:
+        # Get LLM assessment
+        messages = [{"role": "user", "content": assessment_prompt}]
+        assessment_response = chat(messages, system="You are an expert at evaluating document relevance. Provide only valid JSON responses.")
+        
+        logger.debug(f"Raw Gemini assessment response: {assessment_response[:200]}...")
+        
+        # Parse JSON response with robust handling
+        import json
+        
+        # Handle markdown-wrapped JSON responses
+        response_text = assessment_response.strip()
+        if response_text.startswith('```json'):
+            # Extract JSON from markdown code block
+            response_text = response_text.replace('```json', '').replace('```', '').strip()
+        elif response_text.startswith('```'):
+            # Handle generic code blocks
+            lines = response_text.split('\n')
+            response_text = '\n'.join(lines[1:-1]).strip()
+        
+        # Check if response is empty or contains fallback message
+        if not response_text or "I apologize, but I couldn't generate a response" in response_text:
+            logger.error("Empty or fallback response from Gemini API for document assessment")
+            raise ValueError("Empty or fallback response from Gemini API")
+        
+        logger.debug(f"Cleaned response text: {response_text[:200]}...")
+        assessment = json.loads(response_text)
+        
+        # Validate assessment structure
+        required_fields = ['semantic_relevance', 'coverage_score', 'answer_sufficiency', 'sufficient']
+        missing_fields = [field for field in required_fields if field not in assessment]
+        if missing_fields:
+            logger.warning(f"Missing fields in assessment: {missing_fields}")
+            # Set default values for missing fields
+            for field in missing_fields:
+                if field == 'sufficient':
+                    assessment[field] = False
+                else:
+                    assessment[field] = 0
+        
+        # Calculate overall quality score
+        quality_score = (
+            assessment.get("semantic_relevance", 0) * 0.4 +
+            assessment.get("coverage_score", 0) * 0.4 +
+            assessment.get("answer_sufficiency", 0) * 0.2
+        ) / 10.0
+        
+        # Determine sufficiency with intelligent thresholds
+        sufficient = assessment.get("sufficient", False) and quality_score >= 0.6
+        
+        return {
+            "sufficient": sufficient,
+            "confidence": quality_score,
+            "reason": assessment.get("reasoning", "Assessment completed"),
+            "document_quality_score": quality_score,
+            "semantic_relevance": assessment.get("semantic_relevance", 0) / 10.0,
+            "coverage_score": assessment.get("coverage_score", 0) / 10.0,
+            "answer_sufficiency": assessment.get("answer_sufficiency", 0) / 10.0
+        }
+        
+    except json.JSONDecodeError as e:
+        logger.warning(f"Failed to parse Gemini JSON response for assessment, falling back to heuristics. Response was: '{assessment_response[:100]}...' Error: {e}")
+        
+        # Fallback to enhanced heuristic assessment
+    except Exception as e:
+        logger.warning(f"Failed to get intelligent assessment, falling back to heuristics: {e}")
+        
+        # Fallback to enhanced heuristic assessment
+        scores = [doc.get("score", 0.0) for doc in context_documents]
+        avg_score = sum(scores) / len(scores) if scores else 0.0
+        
+        # Enhanced heuristics
+        keyword_matches = _count_keyword_matches(query, context_documents)
+        length_score = min(1.0, sum(len(doc.get("snippet", "")) for doc in context_documents) / 1000)
+        diversity_score = _calculate_document_diversity(context_documents)
+        
+        quality_score = (avg_score * 0.4) + (keyword_matches * 0.3) + (length_score * 0.2) + (diversity_score * 0.1)
+        sufficient = quality_score >= 0.5 and len(context_documents) >= 1
+        
+        return {
+            "sufficient": sufficient,
+            "confidence": quality_score,
+            "reason": f"Heuristic assessment - relevance: {avg_score:.2f}, keywords: {keyword_matches:.2f}, content: {length_score:.2f}",
+            "document_quality_score": quality_score,
+            "semantic_relevance": avg_score,
+            "coverage_score": keyword_matches,
+            "answer_sufficiency": length_score
+        }
+
+def chat_with_llm_knowledge(
+    query: str,
+    context_documents: List[Dict[str, Any]],
+    system_prompt: Optional[str] = None
+) -> str:
+    """
+    Generate chat response using LLM's own knowledge with document context as supporting info
+    
+    Args:
+        query: User's query
+        context_documents: Retrieved documents (used as supporting context)
+        system_prompt: Optional system prompt
+        
+    Returns:
+        Generated response string
+    """
+    # Enhanced system prompt that allows LLM knowledge
+    enhanced_system = (
+        "You are a helpful assistant with extensive knowledge. "
+        "Answer the user's question using your knowledge and training. "
+        "If relevant documents are provided, use them as supporting evidence, but you may "
+        "also draw from your general knowledge to provide a comprehensive answer. "
+        "Clearly distinguish between information from documents and your general knowledge. "
+        "If the documents have limited relevance, focus more on your training knowledge."
+    )
+    
+    system = system_prompt or enhanced_system
+    
+    # Build supporting context from documents if available
+    if context_documents:
+        context_parts = []
+        for i, doc in enumerate(context_documents[:3], 1):  # Limit to top 3
+            snippet = doc.get("snippet", "")[:400]  # Limit length
+            filename = doc.get("filename", "unknown")
+            score = doc.get("score", 0.0)
+            
+            context_parts.append(f"Supporting Document {i} ({filename}, relevance: {score:.2f}):\n{snippet}")
+        
+        context_text = "\n\n".join(context_parts)
+        
+        user_message = f"""
+Question: {query}
+
+Supporting documents (may have limited relevance):
+{context_text}
+
+Please answer the question comprehensively using your knowledge. You may reference the supporting documents if relevant, but feel free to provide additional context and information from your training to give a complete answer. If the documents don't fully address the question, supplement with your general knowledge.
+"""
+    else:
+        user_message = f"Question: {query}\n\nPlease provide a comprehensive answer using your knowledge and training."
+    
+    messages = [{"role": "user", "content": user_message}]
+    
+    return chat(messages, system=system)
+
+def _format_docs_for_assessment(context_documents: List[Dict[str, Any]]) -> str:
+    """Format documents for LLM assessment"""
+    formatted = []
+    for i, doc in enumerate(context_documents[:5], 1):  # Limit to top 5 docs
+        snippet = doc.get("snippet", "")[:300]  # Limit snippet length
+        filename = doc.get("filename", "unknown")
+        score = doc.get("score", 0.0)
+        
+        formatted.append(f"Doc {i} ({filename}, score: {score:.2f}):\n{snippet}")
+    
+    return "\n\n".join(formatted)
+
+def _count_keyword_matches(query: str, context_documents: List[Dict[str, Any]]) -> float:
+    """Count keyword matches between query and documents"""
+    import re
+    
+    # Extract keywords from query (simple approach)
+    query_words = set(re.findall(r'\b\w+\b', query.lower()))
+    query_words = {w for w in query_words if len(w) > 2}  # Filter short words
+    
+    if len(query_words) == 0:
+        return 0.0
+    
+    total_matches = 0
+    for doc in context_documents:
+        snippet = doc.get("snippet", "").lower()
+        doc_words = set(re.findall(r'\b\w+\b', snippet))
+        matches = len(query_words.intersection(doc_words))
+        total_matches += matches
+    
+    # Normalize by query length and document count
+    return min(1.0, total_matches / (len(query_words) * len(context_documents)))
+
+def _calculate_document_diversity(context_documents: List[Dict[str, Any]]) -> float:
+    """Calculate diversity score based on different document sources"""
+    if len(context_documents) <= 1:
+        return 0.5
+    
+    sources = set()
+    for doc in context_documents:
+        filename = doc.get("filename", "unknown")
+        doc_type = doc.get("type", "unknown")
+        sources.add(f"{filename}_{doc_type}")
+    
+    # More diverse sources = higher score
+    diversity = len(sources) / len(context_documents)
+    return min(1.0, diversity * 2)  # Scale up the impact
+
+def chat_with_web_search_fallback(
+    query: str,
+    context_documents: List[Dict[str, Any]],
+    system_prompt: Optional[str] = None
+) -> str:
+    """
+    Generate chat response indicating web search would be performed
+    (Actual web search should be handled in the main endpoint)
+    
+    Args:
+        query: User's query
+        context_documents: Retrieved documents (used as supporting context)
+        system_prompt: Optional system prompt
+        
+    Returns:
+        Generated response string
+    """
+    # Enhanced system prompt that acknowledges web search capability
+    enhanced_system = (
+        "You are a helpful assistant with access to both document knowledge and web search. "
+        "The provided documents have limited relevance to the user's question, so you should "
+        "indicate that web search would provide more current and comprehensive information. "
+        "Acknowledge what limited information is available in the documents, then suggest "
+        "that web search would be performed to get more complete answers."
+    )
+    
+    system = system_prompt or enhanced_system
+    
+    # Build context information
+    if context_documents:
+        doc_info = f"Available documents ({len(context_documents)} found) have limited relevance to your question."
+    else:
+        doc_info = "No relevant documents were found in the knowledge base."
+    
+    user_message = f"""
+Question: {query}
+
+{doc_info}
+
+Since the document knowledge is insufficient to fully answer your question, a web search would typically be performed here to find more current and comprehensive information. This would help provide you with up-to-date answers that go beyond the available document knowledge base.
+    
+Please provide a response acknowledging the limitation and indicating what a web search could help find.
+"""
+    
+    messages = [{"role": "user", "content": user_message}]
+    
+    return chat(messages, system=system)
+
 
 
 ================================================
@@ -12747,6 +13716,8 @@ FILE: app/ui/modern.html
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -12810,6 +13781,41 @@ FILE: app/ui/modern.html
             border-radius: 4px;
             margin-left: 4px;
         }
+        
+        /* Enhanced markdown styles */
+        .markdown-content {
+            line-height: 1.6;
+        }
+        
+        .markdown-content pre {
+            margin: 1rem 0;
+            position: relative;
+        }
+        
+        .markdown-content code {
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+        }
+        
+        .markdown-content pre code {
+            color: #e6ffed !important;
+            background: transparent !important;
+            padding: 0 !important;
+            border-radius: 0 !important;
+        }
+        
+        /* Override highlight.js theme for better visibility */
+        .hljs {
+            background: #1e293b !important;
+            color: #e2e8f0 !important;
+        }
+        
+        .hljs-keyword { color: #f59e0b !important; }
+        .hljs-string { color: #10b981 !important; }
+        .hljs-comment { color: #6b7280 !important; }
+        .hljs-function { color: #3b82f6 !important; }
+        .hljs-variable { color: #8b5cf6 !important; }
+        .hljs-number { color: #f472b6 !important; }
+        .hljs-built_in { color: #06b6d4 !important; }
     </style>
 </head>
 <body class="h-full bg-slate-50">
@@ -12817,6 +13823,48 @@ FILE: app/ui/modern.html
 
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
+        const ReactMarkdown = window.ReactMarkdown;
+        
+        // Custom components for react-markdown
+        const markdownComponents = {
+            code: ({ node, inline, className, children, ...props }) => {
+                const match = /language-(\w+)/.exec(className || '');
+                const language = match ? match[1] : '';
+                
+                return !inline ? (
+                    <div className="my-4">
+                        {language && (
+                            <div className="bg-slate-100 px-3 py-1 text-xs font-mono text-slate-600 border-t border-l border-r border-slate-300 rounded-t">
+                                {language}
+                            </div>
+                        )}
+                        <pre className={`bg-slate-900 text-green-400 p-4 rounded${language ? '-b' : ''} overflow-x-auto`}>
+                            <code className={className} {...props}>
+                                {children}
+                            </code>
+                        </pre>
+                    </div>
+                ) : (
+                    <code className="bg-slate-100 text-slate-800 px-1.5 py-0.5 rounded text-sm font-mono" {...props}>
+                        {children}
+                    </code>
+                );
+            },
+            h1: ({ children }) => <h1 className="text-2xl font-bold text-slate-800 mt-8 mb-4">{children}</h1>,
+            h2: ({ children }) => <h2 className="text-xl font-bold text-slate-800 mt-6 mb-3">{children}</h2>,
+            h3: ({ children }) => <h3 className="text-lg font-semibold text-slate-800 mt-4 mb-2">{children}</h3>,
+            p: ({ children }) => <p className="mb-3 leading-relaxed">{children}</p>,
+            ul: ({ children }) => <ul className="list-disc list-inside mb-3 space-y-1">{children}</ul>,
+            ol: ({ children }) => <ol className="list-decimal list-inside mb-3 space-y-1">{children}</ol>,
+            li: ({ children }) => <li className="ml-2">{children}</li>,
+            strong: ({ children }) => <strong className="font-semibold text-slate-800">{children}</strong>,
+            em: ({ children }) => <em className="italic">{children}</em>,
+            blockquote: ({ children }) => (
+                <blockquote className="border-l-4 border-slate-300 pl-4 italic text-slate-600 mb-3">
+                    {children}
+                </blockquote>
+            )
+        };
 
         // Agent configurations
         const AGENTS = {
@@ -12896,6 +13944,8 @@ FILE: app/ui/modern.html
         function App() {
             const [selectedAgent, setSelectedAgent] = useState('smart');
             const [allowTavily, setAllowTavily] = useState(false);
+            const [allowLlmKnowledge, setAllowLlmKnowledge] = useState(true);
+            const [allowWebSearch, setAllowWebSearch] = useState(false);
             const [messages, setMessages] = useState([]);
             const [inputText, setInputText] = useState('');
             const [isLoading, setIsLoading] = useState(false);
@@ -12906,8 +13956,16 @@ FILE: app/ui/modern.html
             const [selectedPdfChunk, setSelectedPdfChunk] = useState(null);
             const messagesEndRef = useRef(null);
 
+            // Auto-scroll to bottom when messages change
             useEffect(() => {
                 messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+            }, [messages]);
+            
+            // Highlight code blocks after messages update
+            useEffect(() => {
+                if (window.hljs) {
+                    setTimeout(() => window.hljs.highlightAll(), 100);
+                }
             }, [messages]);
 
             const sendMessage = async () => {
@@ -12926,7 +13984,12 @@ FILE: app/ui/modern.html
                 try {
                     const endpoint = selectedAgent === 'smart' ? '/chat' : `/agent/${selectedAgent}`;
                     const payload = selectedAgent === 'smart' 
-                        ? { message: inputText, allow_tavily: allowTavily }
+                        ? { 
+                            message: inputText, 
+                            allow_tavily: allowTavily,
+                            allow_llm_knowledge: allowLlmKnowledge,
+                            allow_web_search: allowWebSearch
+                        }
                         : selectedAgent === 'imagegen'
                         ? { prompt: inputText, include_text: true, style_hints: [] }
                         : { query: inputText };
@@ -13069,6 +14132,10 @@ FILE: app/ui/modern.html
                     <Header 
                         allowTavily={allowTavily}
                         setAllowTavily={setAllowTavily}
+                        allowLlmKnowledge={allowLlmKnowledge}
+                        setAllowLlmKnowledge={setAllowLlmKnowledge}
+                        allowWebSearch={allowWebSearch}
+                        setAllowWebSearch={setAllowWebSearch}
                         onClear={clearChat}
                         onExport={exportJSON}
                     />
@@ -13114,7 +14181,7 @@ FILE: app/ui/modern.html
         }
 
         // Header Component
-        function Header({ allowTavily, setAllowTavily, onClear, onExport }) {
+        function Header({ allowTavily, setAllowTavily, allowLlmKnowledge, setAllowLlmKnowledge, allowWebSearch, setAllowWebSearch, onClear, onExport }) {
             return (
                 <header className="bg-white border-b border-slate-200 px-6 py-3">
                     <div className="flex items-center justify-between">
@@ -13126,15 +14193,35 @@ FILE: app/ui/modern.html
                                 <span className="px-2 py-1 text-xs bg-slate-100 text-slate-600 rounded-md">
                                     Local • No DB
                                 </span>
-                                <label className="flex items-center space-x-2 text-sm">
-                                    <input
-                                        type="checkbox"
-                                        checked={allowTavily}
-                                        onChange={(e) => setAllowTavily(e.target.checked)}
-                                        className="rounded text-teal-600 focus:ring-teal-500"
-                                    />
-                                    <span className="text-slate-600">Allow Tavily</span>
-                                </label>
+                                <div className="space-y-2">
+                                    <label className="flex items-center space-x-2 text-sm">
+                                        <input
+                                            type="checkbox"
+                                            checked={allowTavily}
+                                            onChange={(e) => setAllowTavily(e.target.checked)}
+                                            className="rounded text-teal-600 focus:ring-teal-500"
+                                        />
+                                        <span className="text-slate-600">Allow Tavily (legacy)</span>
+                                    </label>
+                                    <label className="flex items-center space-x-2 text-sm">
+                                        <input
+                                            type="checkbox"
+                                            checked={allowLlmKnowledge}
+                                            onChange={(e) => setAllowLlmKnowledge(e.target.checked)}
+                                            className="rounded text-blue-600 focus:ring-blue-500"
+                                        />
+                                        <span className="text-slate-600">LLM Knowledge Fallback</span>
+                                    </label>
+                                    <label className="flex items-center space-x-2 text-sm">
+                                        <input
+                                            type="checkbox"
+                                            checked={allowWebSearch}
+                                            onChange={(e) => setAllowWebSearch(e.target.checked)}
+                                            className="rounded text-purple-600 focus:ring-purple-500"
+                                        />
+                                        <span className="text-slate-600">Web Search Fallback</span>
+                                    </label>
+                                </div>
                             </div>
                         </div>
 
@@ -13560,13 +14647,12 @@ FILE: app/ui/modern.html
                             {/* Message Content */}
                             <div className="prose prose-sm max-w-none text-slate-700">
                                 {typeof message.content === 'string' ? (
-                                    <div dangerouslySetInnerHTML={{ 
-                                        __html: message.content
-                                            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                                            .replace(/\*(.*?)\*/g, '<em>$1</em>')
-                                            .replace(/\[REDACTED[^\]]*\]/g, '<span class="redacted-text">████████</span>')
-                                            .replace(/\n/g, '<br>')
-                                    }} />
+                                    <ReactMarkdown 
+                                        components={markdownComponents}
+                                        className="markdown-content"
+                                    >
+                                        {message.content.replace(/\[REDACTED[^\]]*\]/g, '████████')}
+                                    </ReactMarkdown>
                                 ) : (
                                     <pre className="text-sm bg-slate-50 p-3 rounded border overflow-x-auto">
                                         {JSON.stringify(message.content, null, 2)}
@@ -13638,6 +14724,24 @@ FILE: app/ui/modern.html
                                             ({index + 1})
                                         </button>
                                     ))}
+                                </div>
+                            )}
+                            
+                            {/* Fallback Information */}
+                            {message.fallback_used && (
+                                <div className="mt-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+                                    <div className="flex items-center space-x-2 text-sm">
+                                        <i className="fas fa-route text-blue-600"></i>
+                                        <span className="font-medium text-blue-800">
+                                            Fallback Used: {message.fallback_used.replace('_', ' ')}
+                                        </span>
+                                    </div>
+                                    {message.document_assessment && (
+                                        <div className="mt-1 text-xs text-blue-700">
+                                            <div>Quality Score: {(message.document_assessment.document_quality_score * 100).toFixed(0)}%</div>
+                                            <div>Assessment: {message.document_assessment.reason}</div>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -14141,202 +15245,6 @@ FILE: app/ui/modern.html
 
 
 ================================================
-FILE: cline_docs/codebaseSummary.md
-================================================
-# Codebase Summary - Synch GenAI PoC
-
-## Project Structure
-```
-synch-genai-poc/
-├── cline_docs/          # Project documentation
-├── app/                 # Main application code
-│   ├── agents/          # AI agents for different query types
-│   ├── tools/           # Utility tools and helpers
-│   ├── rag/             # RAG pipeline implementation
-│   ├── kb/              # Knowledge base (markdown policies, extracted PDFs)
-│   ├── data/            # JSON/CSV stubs for catalog, offers, providers
-│   ├── openapi/         # Dummy partner API specifications
-│   ├── contracts/       # Merchant contracts (md or pdf+md extract)
-│   └── ui/              # Simple SPA for local demo
-├── .env.example         # Environment variable template
-├── requirements.txt     # Python dependencies
-├── run_local.sh         # Local development startup script
-└── README.md            # Setup and usage instructions
-```
-
-## Key Components and Their Interactions
-
-### Core Application (Planned)
-- **FastAPI Server**: Main web server handling API requests and serving UI
-- **RAG Pipeline**: Haystack-based retrieval system for knowledge base queries
-- **Gemini Integration**: Chat and embedding services via Google AI SDK
-- **Agent System**: Different agents for handling various query types
-
-### Data Flow (Planned)
-1. User queries come through UI or API endpoints
-2. Agents determine query type and route to appropriate handler
-3. RAG system searches knowledge base using Gemini embeddings
-4. If no relevant results, optionally fall back to Tavily search
-5. Gemini chat model generates response based on retrieved context
-6. Response returned to user through UI
-
-### External Dependencies
-- **Google AI API**: For Gemini chat and embedding models
-- **Tavily API**: Optional web search fallback
-- **Haystack 2.x**: Document indexing and retrieval
-- **FastAPI ecosystem**: Web framework and ASGI server
-
-## Recent Significant Changes
-- Initial project structure created
-- Documentation framework established
-- Technology stack defined and documented
-
-## User Feedback Integration and Its Impact on Development
-- Project structure follows user specifications exactly
-- No databases as per user requirements
-- Focus on minimal viable PoC implementation
-- Local development optimized setup as requested
-
-## Current Status
-- Project structure: ✅ Complete
-- Documentation: ✅ Complete
-- Dependencies: ✅ Complete
-- Core implementation: ✅ Complete
-- Hybrid RAG pipeline: ✅ Complete
-- Gemini integration: ✅ Complete
-- UI: ✅ Complete
-- Sample data: ✅ Complete
-- Ready for testing: ✅ Complete
-
-
-
-================================================
-FILE: cline_docs/currentTask.md
-================================================
-# Current Task - Synch GenAI PoC Setup
-
-## Current Objectives
-Setting up the initial Python project structure and core dependencies for the Synch GenAI proof of concept.
-
-## Context
-Creating a FastAPI-based application that integrates:
-- Haystack 2.x for RAG (Retrieval-Augmented Generation) with in-memory document store
-- Google Gemini API for chat and embeddings
-- Tavily search as optional fallback
-- Simple UI for local demonstration
-
-## Completed Steps
-1. ✅ Created requirements.txt with pinned dependencies
-2. ✅ Set up .env.example with all required environment variables
-3. ✅ Created FastAPI application structure with main.py
-4. ✅ Implemented Gemini API integration with custom Haystack component
-5. ✅ Set up hybrid RAG pipeline with BM25 + semantic retrieval
-6. ✅ Created responsive web UI for testing
-7. ✅ Wrote run_local.sh script for easy startup
-8. ✅ Created comprehensive README with full documentation
-9. ✅ Added sample knowledge base files for demonstration
-
-## Current Status
-- ✅ Project structure complete and ready for use
-- ✅ Hybrid retrieval pipeline implemented using Haystack 2.x
-- ✅ Gemini integration working for both chat and embeddings
-- ✅ Web UI functional with real-time query processing
-- ✅ Sample data provided for immediate testing
-
-## Reference to Project Roadmap
-This task corresponds to the "Core Infrastructure" and "Deployment & Configuration" sections in projectRoadmap.md.
-
-
-
-================================================
-FILE: cline_docs/projectRoadmap.md
-================================================
-# Synch GenAI PoC - Project Roadmap
-
-## High-Level Goals
-
-### Core Infrastructure
-- [x] Set up project structure with required directories
-- [x] Create FastAPI application with basic endpoints
-- [x] Integrate Haystack 2.x with in-memory document store
-- [x] Set up Gemini API integration for chat and embeddings
-- [x] Implement hybrid RAG pipeline for knowledge base queries
-- [x] Create simple UI for local demo
-
-### Knowledge Base Management
-- [x] Set up markdown policies/terms in /kb directory
-- [x] Create JSON/CSV data stubs for catalog, offers, providers, metrics, policies
-- [x] Add sample data files for demonstration
-- [x] Set up merchant contracts handling
-
-### AI Integration
-- [x] Implement Gemini chat model integration
-- [x] Set up hybrid retrieval (BM25 + semantic embeddings)
-- [x] Configure Tavily search as fallback (optional)
-- [x] Create agent system for handling different query types
-
-### Deployment & Configuration
-- [x] Create comprehensive .env.example with all required variables
-- [x] Set up requirements.txt with pinned dependencies
-- [x] Create run_local.sh script for easy startup
-- [x] Write comprehensive README with setup instructions
-
-## Completion Criteria
-- FastAPI server runs on port 8000
-- UI is accessible and functional
-- RAG system can query knowledge base effectively
-- Gemini integration works for both chat and embeddings
-- All environment variables are properly documented
-- Project can be run locally with minimal setup
-
-## Completed Tasks
-- [x] Created project directory structure
-- [x] Set up cline_docs folder with essential documentation
-
-
-
-================================================
-FILE: cline_docs/techStack.md
-================================================
-# Tech Stack - Synch GenAI PoC
-
-## Core Framework
-- **FastAPI**: Modern, fast web framework for building APIs with Python
-- **Uvicorn**: ASGI server for running FastAPI applications
-- **Pydantic**: Data validation and settings management using Python type annotations
-
-## AI/ML Components
-- **Haystack 2.x**: Modern NLP framework for building search systems and RAG pipelines
-  - Using in-memory document store for PoC simplicity
-  - Provides retrieval and indexing capabilities
-- **Google Generative AI SDK**: Official Python SDK for Gemini API
-  - Chat model: gemini-2.5-flash
-  - Embedding model: gemini-embedding-001
-- **Tavily Python SDK**: Web search API for fallback when local KB doesn't have answers
-  - Optional component, controlled by ALLOW_TAVILY environment variable
-
-## Data Processing
-- **NumPy**: Numerical computing for vector operations
-- **Pandas**: Data manipulation for handling CSV/JSON data stubs
-- **Jinja2**: Template engine for UI rendering
-
-## Configuration & Environment
-- **Python-dotenv**: Environment variable management from .env files
-
-## Architecture Decisions
-- **In-memory storage**: Using Haystack's in-memory document store for simplicity in PoC
-- **Single-file UI**: Simple HTML/JavaScript SPA served directly by FastAPI
-- **Environment-based configuration**: All API keys and settings via environment variables
-- **Modular structure**: Separate directories for agents, tools, RAG, and knowledge base
-- **Local development focus**: Optimized for easy local setup and testing
-
-## Development Tools
-- **run_local.sh**: Shell script for easy local development server startup
-- **requirements.txt**: Pinned dependencies for reproducible builds
-
-
-
-================================================
 FILE: metrics/credit_metrics.csv
 ================================================
 date,product,outstanding_balance,utilization_rate,payment_rate,net_charge_offs,provision_expense,yield
@@ -14485,4 +15393,1489 @@ date,promo_id,promo_name,start_date,end_date,applications,approvals,approval_rat
 2025-08-05,PROMO_HD_002,HomeDepot Fall Prep,2025-08-01,2025-08-31,850,680,0.80,0.77,1900.50
 2025-08-05,PROMO_AMZ_002,Amazon Back to School,2025-08-01,2025-08-15,1150,920,0.80,0.84,1700.75
 2025-08-05,PROMO_BB_001,BestBuy Back to School,2025-07-01,2025-08-31,1140,912,0.80,0.87,2225.25
+
+
+================================================
+FILE: src/App.tsx
+================================================
+import React, { useState, useEffect, useRef } from 'react';
+import { Message, ChatRequest, ChatResponse, UploadedPdf } from './types';
+import { AGENTS } from './config/agents';
+import Header from './components/Header';
+import LeftRail from './components/LeftRail';
+import ChatPane from './components/ChatPane';
+import RightInspector from './components/RightInspector';
+
+function App() {
+  const [selectedAgent, setSelectedAgent] = useState('smart');
+  const [allowTavily, setAllowTavily] = useState(false);
+  const [allowLlmKnowledge, setAllowLlmKnowledge] = useState(true);
+  const [allowWebSearch, setAllowWebSearch] = useState(false);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [inputText, setInputText] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [rightPanel, setRightPanel] = useState('citations');
+  const [citations, setCitations] = useState<string[]>([]);
+  const [toolTrace, setToolTrace] = useState<any[]>([]);
+  const [uploadedPdfs, setUploadedPdfs] = useState<UploadedPdf[]>([]);
+  const [selectedPdfChunk, setSelectedPdfChunk] = useState(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const sendMessage = async () => {
+    if (!inputText.trim()) return;
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: inputText,
+      agent: 'user',
+      timestamp: new Date()
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    setInputText('');
+    setIsLoading(true);
+
+    try {
+      const endpoint = selectedAgent === 'smart' ? '/chat' : `/agent/${selectedAgent}`;
+      const payload: ChatRequest | any = selectedAgent === 'smart' 
+        ? { 
+            message: inputText, 
+            allow_tavily: allowTavily,
+            allow_llm_knowledge: allowLlmKnowledge,
+            allow_web_search: allowWebSearch
+          }
+        : selectedAgent === 'imagegen'
+        ? { prompt: inputText, include_text: true, style_hints: [] }
+        : { query: inputText };
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const result: ChatResponse = await response.json();
+      
+      const aiMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: result.response,
+        agent: result.agent,
+        confidence: result.confidence,
+        sources: result.sources,
+        used_tavily: result.used_tavily,
+        fallback_used: result.fallback_used,
+        document_assessment: result.document_assessment,
+        image_data: result.image_data,
+        image_format: result.image_format,
+        timestamp: new Date()
+      };
+
+      setMessages(prev => [...prev, aiMessage]);
+      setCitations(result.sources || []);
+    } catch (error) {
+      console.error('Error sending message:', error);
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: `Error: ${error instanceof Error ? error.message : 'Unknown error occurred'}`,
+        agent: 'system',
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const uploadPdf = async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await fetch('/upload/pdf', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Upload failed with status ${response.status}:`, errorText);
+        throw new Error(`Upload failed: ${response.status} - ${errorText}`);
+      }
+
+      const result = await response.json();
+      
+      // Add PDF upload message
+      const pdfMessage: Message = {
+        id: Date.now().toString(),
+        role: 'user',
+        content: `Uploaded PDF: ${file.name}`,
+        agent: 'user',
+        timestamp: new Date(),
+        pdfData: {
+          filename: result.filename,
+          total_pages: result.total_pages,
+          chunks_extracted: result.chunks_extracted,
+          processing_time: result.processing_time,
+          file_size: result.file_size
+        }
+      };
+
+      setMessages(prev => [...prev, pdfMessage]);
+      setUploadedPdfs(prev => [...prev, {
+        pdf_id: result.pdf_id,
+        filename: result.filename,
+        total_pages: result.total_pages,
+        chunks: result.chunks_extracted,
+        processing_time: result.processing_time
+      }]);
+    } catch (error) {
+      console.error('PDF upload error:', error);
+    }
+  };
+
+  const handleSelectAgent = (agent: string) => {
+    setSelectedAgent(agent);
+  };
+
+  const handleUseExample = (agent: string) => {
+    setSelectedAgent(agent);
+    setInputText(AGENTS[agent]?.example || '');
+  };
+
+  const clearChat = () => {
+    setMessages([]);
+    setCitations([]);
+    setToolTrace([]);
+  };
+
+  const exportJSON = () => {
+    const lastMessage = messages[messages.length - 1];
+    if (lastMessage && lastMessage.role === 'assistant') {
+      const blob = new Blob([JSON.stringify(lastMessage, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `genai-response-${Date.now()}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+  };
+
+  return (
+    <div className="h-screen flex flex-col bg-slate-50">
+      {/* Header */}
+      <Header 
+        allowTavily={allowTavily}
+        setAllowTavily={setAllowTavily}
+        allowLlmKnowledge={allowLlmKnowledge}
+        setAllowLlmKnowledge={setAllowLlmKnowledge}
+        allowWebSearch={allowWebSearch}
+        setAllowWebSearch={setAllowWebSearch}
+        onClear={clearChat}
+        onExport={exportJSON}
+      />
+
+      {/* Main Content */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Left Rail */}
+        <LeftRail 
+          selectedAgent={selectedAgent}
+          onSelectAgent={handleSelectAgent}
+          onUseExample={handleUseExample}
+        />
+
+        {/* Chat Pane */}
+        <ChatPane 
+          messages={messages}
+          isLoading={isLoading}
+          inputText={inputText}
+          setInputText={setInputText}
+          selectedAgent={selectedAgent}
+          onSendMessage={sendMessage}
+          messagesEndRef={messagesEndRef}
+          uploadPdf={uploadPdf}
+        />
+
+        {/* Right Inspector */}
+        <RightInspector 
+          activePanel={rightPanel}
+          setActivePanel={setRightPanel}
+          citations={citations}
+          toolTrace={toolTrace}
+          uploadedPdfs={uploadedPdfs}
+          selectedPdfChunk={selectedPdfChunk}
+          setSelectedPdfChunk={setSelectedPdfChunk}
+        />
+      </div>
+    </div>
+  );
+}
+
+export default App;
+
+
+================================================
+FILE: src/index.css
+================================================
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body {
+    @apply h-full;
+  }
+}
+
+@layer components {
+  .tool-chip {
+    @apply transition-all duration-200 ease-in-out;
+  }
+  
+  .tool-chip:hover {
+    @apply transform -translate-y-1 shadow-md;
+  }
+  
+  .redacted-text {
+    @apply bg-slate-800 text-slate-800 px-2 py-1 rounded select-none;
+    background-image: repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(255,255,255,.1) 2px, rgba(255,255,255,.1) 4px);
+    background-repeat: repeat-x;
+    background-position: 0 50%;
+    color: transparent;
+  }
+  
+  .redacted-text:hover::after {
+    content: " (Redacted)";
+    @apply text-slate-400 text-xs bg-slate-700 px-1.5 py-0.5 rounded ml-1;
+  }
+  
+  .markdown-content {
+    @apply leading-relaxed;
+  }
+  
+  .markdown-content pre {
+    @apply my-4 relative;
+  }
+  
+  .markdown-content code {
+    @apply font-mono;
+  }
+  
+  .markdown-content pre code {
+    @apply text-slate-100 bg-transparent p-0 rounded-none;
+  }
+}
+
+/* Syntax highlighting overrides */
+.hljs {
+  @apply bg-slate-900 text-slate-100 !important;
+}
+
+.hljs-keyword { @apply text-amber-400 !important; }
+.hljs-string { @apply text-emerald-400 !important; }
+.hljs-comment { @apply text-slate-500 !important; }
+.hljs-function { @apply text-blue-400 !important; }
+.hljs-variable { @apply text-purple-400 !important; }
+.hljs-number { @apply text-pink-400 !important; }
+.hljs-built_in { @apply text-cyan-400 !important; }
+
+
+================================================
+FILE: src/main.tsx
+================================================
+import React from 'react'
+import ReactDOM from 'react-dom/client'
+import App from './App.tsx'
+import './index.css'
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+)
+
+
+================================================
+FILE: src/types.ts
+================================================
+export interface Agent {
+  name: string;
+  icon: string;
+  color: string;
+  example: string;
+  tooltip: string;
+}
+
+export interface Message {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  agent: string;
+  confidence?: number;
+  sources?: string[];
+  used_tavily?: boolean;
+  fallback_used?: string | null;
+  document_assessment?: DocumentAssessment | null;
+  image_data?: string | null;
+  image_format?: string | null;
+  timestamp: Date;
+  pdfData?: PdfData;
+}
+
+export interface DocumentAssessment {
+  sufficient: boolean;
+  confidence: number;
+  reason: string;
+  document_quality_score: number;
+  semantic_relevance: number;
+  coverage_score: number;
+  answer_sufficiency: number;
+}
+
+export interface PdfData {
+  filename: string;
+  total_pages: number;
+  chunks_extracted: number;
+  processing_time: number;
+  file_size: number;
+}
+
+export interface ChatRequest {
+  message: string;
+  allow_tavily?: boolean;
+  allow_llm_knowledge?: boolean;
+  allow_web_search?: boolean;
+}
+
+export interface ChatResponse {
+  response: string;
+  agent: string;
+  confidence: number;
+  sources: string[];
+  used_tavily: boolean;
+  fallback_used?: string | null;
+  document_assessment?: DocumentAssessment | null;
+  image_data?: string | null;
+  image_format?: string | null;
+}
+
+export interface UploadedPdf {
+  pdf_id: string;
+  filename: string;
+  total_pages: number;
+  chunks: number;
+  processing_time: number;
+}
+
+
+================================================
+FILE: src/components/ChatMessage.tsx
+================================================
+import React from 'react';
+import { Message } from '../types';
+import { AGENTS } from '../config/agents';
+import MarkdownRenderer from './MarkdownRenderer';
+
+interface ChatMessageProps {
+  message: Message;
+}
+
+const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
+  if (message.role === 'user') {
+    return (
+      <div className="chat-message animate-fade-in">
+        <div className="flex items-start space-x-3 justify-end">
+          <div className="max-w-3xl">
+            <div className="bg-teal-600 text-white px-4 py-2 rounded-2xl rounded-tr-sm">
+              <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+            </div>
+            {message.pdfData && (
+              <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg max-w-sm">
+                <div className="flex items-center space-x-2">
+                  <div className="w-8 h-8 bg-red-100 rounded flex items-center justify-center flex-shrink-0">
+                    <i className="fas fa-file-pdf text-red-600"></i>
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center space-x-2 mb-1">
+                      <i className="fas fa-file-pdf text-red-600"></i>
+                      <span className="font-medium text-sm text-slate-800">
+                        {message.pdfData.filename}
+                      </span>
+                    </div>
+                    <div className="text-xs text-slate-600 space-y-1">
+                      <div>📄 {message.pdfData.total_pages} pages</div>
+                      <div>🧩 {message.pdfData.chunks_extracted} chunks extracted</div>
+                      <div>⚡ Processed in {message.pdfData.processing_time?.toFixed(2)}s</div>
+                    </div>
+                    <div className="text-xs text-slate-500 mt-2">
+                      Ready for questions about this document
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="w-8 h-8 rounded-full bg-teal-600 flex items-center justify-center text-white flex-shrink-0">
+            <i className="fas fa-user text-sm"></i>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="chat-message animate-fade-in">
+      <div className="flex items-start space-x-3">
+        <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center">
+          <i className={`fas ${AGENTS[message.agent]?.icon || 'fa-robot'} text-slate-600`}></i>
+        </div>
+        <div className="flex-1 max-w-4xl">
+          {/* Message Header */}
+          <div className="flex items-center space-x-2 mb-2">
+            <span className="font-medium text-slate-700">
+              {AGENTS[message.agent]?.name || 'AI Assistant'}
+            </span>
+            {message.confidence !== undefined && (
+              <span className="px-2 py-0.5 text-xs bg-slate-100 text-slate-600 rounded-full">
+                {(message.confidence * 100).toFixed(0)}%
+              </span>
+            )}
+          </div>
+
+          {/* Message Content */}
+          <MarkdownRenderer content={message.content} />
+
+          {/* Image Display */}
+          {message.image_data && (
+            <div className="mt-4 max-w-lg">
+              <div className="border border-slate-200 rounded-lg overflow-hidden">
+                <div className="bg-slate-50 px-3 py-2 border-b border-slate-200">
+                  <span className="text-sm text-slate-600 flex items-center">
+                    <i className="fas fa-image mr-2"></i>
+                    Generated Image ({message.image_format})
+                  </span>
+                </div>
+                <div className="p-4">
+                  <img
+                    src={`data:image/${message.image_format};base64,${message.image_data}`}
+                    alt="Generated content"
+                    className="max-w-full h-auto rounded"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Sources */}
+          {message.sources && message.sources.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-1">
+              {message.sources.slice(0, 5).map((source, index) => (
+                <button
+                  key={index}
+                  className="tool-chip text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-2 py-1 rounded-md"
+                  title={source}
+                >
+                  <i className="fas fa-quote-left mr-1"></i>
+                  ({index + 1})
+                </button>
+              ))}
+            </div>
+          )}
+          
+          {/* Fallback Information */}
+          {message.fallback_used && (
+            <div className="mt-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-center space-x-2 text-sm">
+                <i className="fas fa-route text-blue-600"></i>
+                <span className="font-medium text-blue-800">
+                  Fallback Used: {message.fallback_used.replace('_', ' ')}
+                </span>
+              </div>
+              {message.document_assessment && (
+                <div className="mt-1 text-xs text-blue-700">
+                  <div>Quality Score: {(message.document_assessment.document_quality_score * 100).toFixed(0)}%</div>
+                  <div>Assessment: {message.document_assessment.reason}</div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default ChatMessage;
+
+
+================================================
+FILE: src/components/ChatPane.tsx
+================================================
+import React, { useState, useRef } from 'react';
+import { Message } from '../types';
+import { AGENTS } from '../config/agents';
+import ChatMessage from './ChatMessage';
+
+interface ChatPaneProps {
+  messages: Message[];
+  isLoading: boolean;
+  inputText: string;
+  setInputText: (text: string) => void;
+  selectedAgent: string;
+  onSendMessage: () => void;
+  messagesEndRef: React.RefObject<HTMLDivElement>;
+  uploadPdf: (file: File) => void;
+}
+
+const ChatPane: React.FC<ChatPaneProps> = ({
+  messages,
+  isLoading,
+  inputText,
+  setInputText,
+  selectedAgent,
+  onSendMessage,
+  messagesEndRef,
+  uploadPdf
+}) => {
+  const [isDragOver, setIsDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      if (e.shiftKey || e.ctrlKey) {
+        // Allow new line on Shift+Enter or Ctrl+Enter
+        return;
+      } else {
+        // Send message on plain Enter
+        e.preventDefault();
+        if (inputText.trim()) {
+          onSendMessage();
+        }
+      }
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+
+    const files = Array.from(e.dataTransfer.files);
+    console.log('Dropped files:', files.map(f => ({ name: f.name, type: f.type, size: f.size })));
+    
+    const pdfFiles = files.filter(file => 
+      file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
+    );
+
+    if (pdfFiles.length === 0) {
+      alert('Please drop PDF files only.');
+      return;
+    }
+
+    // Upload each PDF file
+    for (const file of pdfFiles) {
+      try {
+        console.log(`Uploading PDF: ${file.name}`);
+        await uploadPdf(file);
+        console.log(`Successfully uploaded: ${file.name}`);
+      } catch (error) {
+        console.error(`Error uploading PDF ${file.name}:`, error);
+      }
+    }
+  };
+
+  const handleFileUpload = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && file.type === 'application/pdf') {
+      uploadPdf(file);
+    }
+  };
+
+  return (
+    <div 
+      className="flex-1 flex flex-col bg-white relative"
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {/* Drag overlay */}
+      {isDragOver && (
+        <div className="absolute inset-0 bg-teal-50 border-2 border-dashed border-teal-300 flex items-center justify-center z-10">
+          <div className="text-center">
+            <i className="fas fa-file-pdf text-4xl text-teal-600 mb-4"></i>
+            <p className="text-teal-800 font-medium">Drop PDF files here</p>
+          </div>
+        </div>
+      )}
+
+      {/* Chat Header */}
+      <div className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between">
+        <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-2">
+            <i className={`fas ${AGENTS[selectedAgent]?.icon || 'fa-robot'} ${AGENTS[selectedAgent]?.color || 'text-slate-600'}`}></i>
+            <span className="font-medium text-slate-800">{AGENTS[selectedAgent]?.name || 'AI Assistant'}</span>
+          </div>
+          <span className="px-2 py-1 text-xs bg-slate-100 text-slate-600 rounded-md">
+            {messages.length} messages
+          </span>
+        </div>
+        <div className="flex items-center space-x-2 text-sm text-slate-500">
+          <i className="fas fa-circle text-green-500"></i>
+          <span>Online</span>
+        </div>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        {messages.length === 0 ? (
+          <div className="text-center py-12">
+            <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <i className={`fas ${AGENTS[selectedAgent]?.icon || 'fa-robot'} ${AGENTS[selectedAgent]?.color || 'text-slate-400'} text-2xl`}></i>
+            </div>
+            <h3 className="text-lg font-medium text-slate-800 mb-2">
+              Chat with {AGENTS[selectedAgent]?.name || 'AI Assistant'}
+            </h3>
+            <p className="text-slate-600 max-w-md mx-auto mb-4">
+              {AGENTS[selectedAgent]?.tooltip || 'Start a conversation by typing your message below.'}
+            </p>
+            <div className="text-sm text-slate-500">
+              <p>Try: "{AGENTS[selectedAgent]?.example || 'Hello, how can you help me?'}"</p>
+            </div>
+          </div>
+        ) : (
+          messages.map((message) => (
+            <ChatMessage key={message.id} message={message} />
+          ))
+        )}
+        
+        {isLoading && (
+          <div className="flex items-center space-x-3 animate-fade-in">
+            <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center">
+              <i className={`fas ${AGENTS[selectedAgent]?.icon || 'fa-robot'} text-slate-600`}></i>
+            </div>
+            <div className="flex space-x-1">
+              <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></div>
+              <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
+              <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+            </div>
+          </div>
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Input */}
+      <div className="bg-white border-t border-slate-200 p-4">
+        <div className="flex items-end space-x-3">
+          <button
+            onClick={handleFileUpload}
+            className="p-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
+            title="Upload PDF"
+          >
+            <i className="fas fa-plus text-lg"></i>
+          </button>
+          
+          <div className="flex-1">
+            <textarea
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onKeyDown={handleKeyPress}
+              placeholder={`Ask to ${AGENTS[selectedAgent]?.name || 'AI Assistant'}...`}
+              className="w-full px-4 py-3 border border-slate-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+              rows={1}
+              disabled={isLoading}
+            />
+          </div>
+          
+          <button
+            onClick={onSendMessage}
+            disabled={!inputText.trim() || isLoading}
+            className="px-4 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <i className="fas fa-paper-plane"></i>
+          </button>
+        </div>
+        <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
+          <span>Use Tavily • Shift+Enter for new line</span>
+          <span>0 chars • Shift+Enter to send</span>
+        </div>
+      </div>
+
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".pdf"
+        onChange={handleFileChange}
+        className="hidden"
+      />
+    </div>
+  );
+};
+
+export default ChatPane;
+
+
+================================================
+FILE: src/components/Header.tsx
+================================================
+import React from 'react';
+
+interface HeaderProps {
+  allowTavily: boolean;
+  setAllowTavily: (value: boolean) => void;
+  allowLlmKnowledge: boolean;
+  setAllowLlmKnowledge: (value: boolean) => void;
+  allowWebSearch: boolean;
+  setAllowWebSearch: (value: boolean) => void;
+  onClear: () => void;
+  onExport: () => void;
+}
+
+const Header: React.FC<HeaderProps> = ({
+  allowTavily,
+  setAllowTavily,
+  allowLlmKnowledge,
+  setAllowLlmKnowledge,
+  allowWebSearch,
+  setAllowWebSearch,
+  onClear,
+  onExport
+}) => {
+  return (
+    <header className="bg-white border-b border-slate-200 px-6 py-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-6">
+          <h1 className="text-xl font-semibold text-slate-800">
+            GenAI Studio <span className="text-sm font-normal text-slate-500">(Hackathon PoC)</span>
+          </h1>
+          <div className="flex items-center space-x-4">
+            <span className="px-2 py-1 text-xs bg-slate-100 text-slate-600 rounded-md">
+              Local • No DB
+            </span>
+            
+            {/* Elegant Toggle Switches */}
+            <div className="flex items-center space-x-6 ml-4">
+              {/* Tavily Toggle */}
+              <div className="flex items-center space-x-2">
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={allowTavily}
+                    onChange={(e) => setAllowTavily(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-teal-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-teal-500"></div>
+                </label>
+                <span className="text-xs text-slate-600 font-medium">
+                  Tavily <span className="text-slate-400">(legacy)</span>
+                </span>
+              </div>
+
+              {/* LLM Knowledge Toggle */}
+              <div className="flex items-center space-x-2">
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={allowLlmKnowledge}
+                    onChange={(e) => setAllowLlmKnowledge(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
+                </label>
+                <span className="text-xs text-slate-600 font-medium flex items-center space-x-1">
+                  <i className="fas fa-brain text-blue-500"></i>
+                  <span>LLM Knowledge</span>
+                </span>
+              </div>
+
+              {/* Web Search Toggle */}
+              <div className="flex items-center space-x-2">
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={allowWebSearch}
+                    onChange={(e) => setAllowWebSearch(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-500"></div>
+                </label>
+                <span className="text-xs text-slate-600 font-medium flex items-center space-x-1">
+                  <i className="fas fa-search text-purple-500"></i>
+                  <span>Web Search</span>
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center space-x-3">
+          <span className="px-2 py-1 text-xs bg-green-100 text-green-600 rounded-md">
+            PII Redaction ON
+          </span>
+          <button
+            onClick={onClear}
+            className="px-3 py-1 text-sm text-slate-600 hover:text-slate-800"
+          >
+            Clear
+          </button>
+          <button
+            onClick={onExport}
+            className="px-3 py-1 text-sm text-slate-600 hover:text-slate-800"
+          >
+            Export
+          </button>
+        </div>
+      </div>
+    </header>
+  );
+};
+
+export default Header;
+
+
+================================================
+FILE: src/components/LeftRail.tsx
+================================================
+import React from 'react';
+import { AGENTS } from '../config/agents';
+
+interface LeftRailProps {
+  selectedAgent: string;
+  onSelectAgent: (agent: string) => void;
+  onUseExample: (agent: string) => void;
+}
+
+interface AgentItemProps {
+  agentKey: string;
+  agent: any;
+  isSelected: boolean;
+  onSelect: () => void;
+  onUseExample: () => void;
+}
+
+function AgentItem({ agentKey, agent, isSelected, onSelect, onUseExample }: AgentItemProps) {
+  return (
+    <div 
+      className={`p-3 border-b border-slate-100 cursor-pointer hover:bg-slate-50 transition-colors ${
+        isSelected ? 'bg-teal-50 border-r-2 border-teal-500' : ''
+      }`}
+      onClick={onSelect}
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-3">
+          <i className={`fas ${agent.icon} ${agent.color}`}></i>
+          <div>
+            <div className="font-medium text-sm text-slate-800">
+              {agent.name}
+            </div>
+            <div className="text-xs text-slate-500 mt-1">
+              {agent.tooltip}
+            </div>
+          </div>
+        </div>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onUseExample();
+          }}
+          className="text-xs text-teal-600 hover:text-teal-700 p-1"
+          title="Try Example"
+        >
+          <i className="fas fa-play"></i>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const LeftRail: React.FC<LeftRailProps> = ({ selectedAgent, onSelectAgent, onUseExample }) => {
+  return (
+    <div className="w-64 bg-white border-r border-slate-200 flex flex-col">
+      <div className="p-4 border-b border-slate-200">
+        <h2 className="font-medium text-slate-800 mb-3">Agents</h2>
+      </div>
+      <div className="flex-1 overflow-y-auto">
+        {Object.entries(AGENTS).map(([key, agent]) => (
+          <AgentItem
+            key={key}
+            agentKey={key}
+            agent={agent}
+            isSelected={selectedAgent === key}
+            onSelect={() => onSelectAgent(key)}
+            onUseExample={() => onUseExample(key)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+};
+
+export default LeftRail;
+
+
+================================================
+FILE: src/components/MarkdownRenderer.tsx
+================================================
+import React from 'react';
+import ReactMarkdown from 'react-markdown';
+import rehypeHighlight from 'rehype-highlight';
+import remarkGfm from 'remark-gfm';
+import 'highlight.js/styles/github-dark.css';
+
+interface MarkdownRendererProps {
+  content: string;
+  className?: string;
+}
+
+const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, className = '' }) => {
+  // Process content to handle redacted text
+  const processedContent = content.replace(/\[REDACTED[^\]]*\]/g, '████████');
+
+  const components = {
+    code: ({ node, inline, className, children, ...props }: any) => {
+      const match = /language-(\w+)/.exec(className || '');
+      const language = match ? match[1] : '';
+      
+      return !inline ? (
+        <div className="my-4">
+          {language && (
+            <div className="bg-slate-100 px-3 py-1 text-xs font-mono text-slate-600 border-t border-l border-r border-slate-300 rounded-t">
+              {language}
+            </div>
+          )}
+          <pre className={`bg-slate-900 text-slate-100 p-4 rounded${language ? '-b' : ''} overflow-x-auto`}>
+            <code className={className} {...props}>
+              {children}
+            </code>
+          </pre>
+        </div>
+      ) : (
+        <code className="bg-slate-100 text-slate-800 px-1.5 py-0.5 rounded text-sm font-mono" {...props}>
+          {children}
+        </code>
+      );
+    },
+    h1: ({ children }: any) => <h1 className="text-2xl font-bold text-slate-800 mt-8 mb-4">{children}</h1>,
+    h2: ({ children }: any) => <h2 className="text-xl font-bold text-slate-800 mt-6 mb-3">{children}</h2>,
+    h3: ({ children }: any) => <h3 className="text-lg font-semibold text-slate-800 mt-4 mb-2">{children}</h3>,
+    p: ({ children }: any) => <p className="mb-3 leading-relaxed">{children}</p>,
+    ul: ({ children }: any) => <ul className="list-disc list-inside mb-3 space-y-1">{children}</ul>,
+    ol: ({ children }: any) => <ol className="list-decimal list-inside mb-3 space-y-1">{children}</ol>,
+    li: ({ children }: any) => <li className="ml-2">{children}</li>,
+    strong: ({ children }: any) => <strong className="font-semibold text-slate-800">{children}</strong>,
+    em: ({ children }: any) => <em className="italic">{children}</em>,
+    blockquote: ({ children }: any) => (
+      <blockquote className="border-l-4 border-slate-300 pl-4 italic text-slate-600 mb-3">
+        {children}
+      </blockquote>
+    ),
+    table: ({ children }: any) => (
+      <div className="overflow-x-auto mb-4">
+        <table className="min-w-full border border-slate-300">{children}</table>
+      </div>
+    ),
+    th: ({ children }: any) => (
+      <th className="border border-slate-300 bg-slate-100 px-4 py-2 text-left font-semibold">{children}</th>
+    ),
+    td: ({ children }: any) => (
+      <td className="border border-slate-300 px-4 py-2">{children}</td>
+    )
+  };
+
+  return (
+    <div className={`prose prose-sm max-w-none text-slate-700 markdown-content ${className}`}>
+      <ReactMarkdown
+        components={components}
+        rehypePlugins={[rehypeHighlight]}
+        remarkPlugins={[remarkGfm]}
+      >
+        {processedContent}
+      </ReactMarkdown>
+    </div>
+  );
+};
+
+export default MarkdownRenderer;
+
+
+================================================
+FILE: src/components/RightInspector.tsx
+================================================
+import React, { useState, useEffect, useRef } from 'react';
+import { UploadedPdf } from '../types';
+
+interface RightInspectorProps {
+  activePanel: string;
+  setActivePanel: (panel: string) => void;
+  citations: string[];
+  toolTrace: any[];
+  uploadedPdfs: UploadedPdf[];
+  selectedPdfChunk: any;
+  setSelectedPdfChunk: (chunk: any) => void;
+}
+
+const RightInspector: React.FC<RightInspectorProps> = ({
+  activePanel,
+  setActivePanel,
+  citations,
+  toolTrace,
+  uploadedPdfs,
+  selectedPdfChunk,
+  setSelectedPdfChunk
+}) => {
+  return (
+    <div className="w-80 bg-white border-l border-slate-200 flex flex-col">
+      {/* Tabs */}
+      <div className="border-b border-slate-200">
+        <div className="flex">
+          <button
+            onClick={() => setActivePanel('citations')}
+            className={`flex-1 px-4 py-3 text-sm font-medium border-b-2 ${
+              activePanel === 'citations'
+                ? 'text-teal-600 border-teal-500'
+                : 'text-slate-500 border-transparent hover:text-slate-700 hover:border-slate-300'
+            }`}
+          >
+            <i className="fas fa-quote-left mr-2"></i>
+            Citations
+          </button>
+          <button
+            onClick={() => setActivePanel('tools')}
+            className={`flex-1 px-4 py-3 text-sm font-medium border-b-2 ${
+              activePanel === 'tools'
+                ? 'text-teal-600 border-teal-500'
+                : 'text-slate-500 border-transparent hover:text-slate-700 hover:border-slate-300'
+            }`}
+          >
+            <i className="fas fa-cog mr-2"></i>
+            Tool Trace
+          </button>
+          <button
+            onClick={() => setActivePanel('pdfs')}
+            className={`flex-1 px-4 py-3 text-sm font-medium border-b-2 relative ${
+              activePanel === 'pdfs'
+                ? 'text-teal-600 border-teal-500'
+                : 'text-slate-500 border-transparent hover:text-slate-700 hover:border-slate-300'
+            }`}
+          >
+            <i className="fas fa-file-pdf mr-2"></i>
+            Doc Viewer
+            {uploadedPdfs.length > 0 && (
+              <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
+                {uploadedPdfs.length}
+              </span>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto">
+        {activePanel === 'citations' && (
+          <div className="p-4">
+            <h3 className="font-medium text-slate-800 mb-4">Sources & Citations</h3>
+            {citations.length > 0 ? (
+              <div className="space-y-3">
+                {citations.map((citation, index) => (
+                  <div key={index} className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                    <div className="flex items-start space-x-2">
+                      <span className="flex-shrink-0 w-5 h-5 bg-teal-100 text-teal-700 rounded text-xs font-medium flex items-center justify-center">
+                        {index + 1}
+                      </span>
+                      <div className="text-sm text-slate-700 leading-relaxed">
+                        {citation}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <i className="fas fa-quote-left text-3xl text-slate-300 mb-3"></i>
+                <p className="text-slate-500 text-sm">No citations yet</p>
+                <p className="text-xs text-slate-400 mt-1">Citations will appear here when you chat with agents</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activePanel === 'tools' && (
+          <div className="p-4">
+            <h3 className="font-medium text-slate-800 mb-4">Tool Trace</h3>
+            {toolTrace.length > 0 ? (
+              <div className="space-y-3">
+                {toolTrace.map((trace, index) => (
+                  <div key={index} className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                    <div className="text-sm font-medium text-slate-800 mb-2">
+                      {trace.tool_name}
+                    </div>
+                    <div className="text-xs text-slate-600">
+                      Status: {trace.status}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <i className="fas fa-cog text-3xl text-slate-300 mb-3"></i>
+                <p className="text-slate-500 text-sm">No tool traces yet</p>
+                <p className="text-xs text-slate-400 mt-1">Tool execution logs will appear here</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activePanel === 'pdfs' && (
+          <DocViewerPanel 
+            uploadedPdfs={uploadedPdfs}
+            selectedPdfChunk={selectedPdfChunk}
+            setSelectedPdfChunk={setSelectedPdfChunk}
+          />
+        )}
+      </div>
+    </div>
+  );
+};
+
+// Doc Viewer Panel Component
+function DocViewerPanel({ uploadedPdfs, selectedPdfChunk, setSelectedPdfChunk }: {
+  uploadedPdfs: UploadedPdf[];
+  selectedPdfChunk: any;
+  setSelectedPdfChunk: (chunk: any) => void;
+}) {
+  const [selectedPdf, setSelectedPdf] = useState<UploadedPdf | null>(null);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [pageData, setPageData] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [imgLoaded, setImgLoaded] = useState<boolean | null>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+
+  useEffect(() => {
+    if (selectedPdf && currentPage !== null) {
+      loadPageData();
+    }
+  }, [selectedPdf, currentPage]);
+
+  // Auto-select PDF when chunk is selected from citations
+  useEffect(() => {
+    if (selectedPdfChunk && uploadedPdfs.length > 0 && !selectedPdf) {
+      // Find which PDF contains this chunk
+      const findPdfWithChunk = async () => {
+        for (const pdf of uploadedPdfs) {
+          try {
+            const response = await fetch(`/pdf/${pdf.pdf_id}/info`);
+            const pdfInfo = await response.json();
+            
+            // Check if this PDF has the selected chunk
+            const hasChunk = pdfInfo.chunks && pdfInfo.chunks.some((chunk: any) => 
+              chunk.chunk_id === selectedPdfChunk
+            );
+            
+            if (hasChunk) {
+              setSelectedPdf(pdf);
+              
+              // Find the page containing this chunk
+              const matchingChunk = pdfInfo.chunks.find((chunk: any) => 
+                chunk.chunk_id === selectedPdfChunk
+              );
+              
+              if (matchingChunk) {
+                setCurrentPage(matchingChunk.page_number || 0);
+              }
+              break;
+            }
+          } catch (error) {
+            console.error(`Error checking PDF ${pdf.filename}:`, error);
+          }
+        }
+      };
+      
+      findPdfWithChunk();
+    }
+  }, [selectedPdfChunk, uploadedPdfs, selectedPdf]);
+
+  const loadPageData = async () => {
+    if (!selectedPdf) return;
+    
+    setLoading(true);
+    try {
+      const response = await fetch(`/pdf/${selectedPdf.pdf_id}/page/${currentPage}`);
+      const data = await response.json();
+      setPageData(data);
+    } catch (error) {
+      console.error('Error loading page data:', error);
+      setPageData(null);
+    }
+    setLoading(false);
+  };
+
+  const handlePdfSelect = (pdf: UploadedPdf) => {
+    setSelectedPdf(pdf);
+    setCurrentPage(0);
+    setPageData(null);
+  };
+
+  const nextPage = () => {
+    if (selectedPdf && currentPage < selectedPdf.total_pages - 1) {
+      setCurrentPage(currentPage + 1);
+    }
+  };
+
+  const prevPage = () => {
+    if (currentPage > 0) {
+      setCurrentPage(currentPage - 1);
+    }
+  };
+
+  return (
+    <div className="p-4">
+      <h3 className="font-medium text-slate-800 mb-4">Document Viewer</h3>
+      
+      {uploadedPdfs.length === 0 ? (
+        <div className="text-center py-8">
+          <i className="fas fa-file-pdf text-3xl text-slate-300 mb-3"></i>
+          <p className="text-slate-500 text-sm">No PDFs uploaded</p>
+          <p className="text-xs text-slate-400 mt-1">Drag & drop PDF files to analyze them</p>
+        </div>
+      ) : !selectedPdf ? (
+        <div className="space-y-3">
+          {uploadedPdfs.map((pdf) => (
+            <div 
+              key={pdf.pdf_id} 
+              className="p-3 bg-slate-50 rounded-lg border border-slate-200 cursor-pointer hover:bg-slate-100"
+              onClick={() => handlePdfSelect(pdf)}
+            >
+              <div className="flex items-center space-x-3">
+                <i className="fas fa-file-pdf text-red-500 text-lg"></i>
+                <div className="flex-1">
+                  <div className="font-medium text-sm text-slate-800 truncate">
+                    {pdf.filename}
+                  </div>
+                  <div className="text-xs text-slate-600 space-y-1 mt-1">
+                    <div>📄 {pdf.total_pages} pages</div>
+                    <div>🧩 {pdf.chunks} chunks</div>
+                    <div>⚡ {pdf.processing_time.toFixed(2)}s</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {/* PDF Header */}
+          <div className="flex items-center justify-between">
+            <button
+              onClick={() => setSelectedPdf(null)}
+              className="text-teal-600 hover:text-teal-700 text-sm flex items-center space-x-1"
+            >
+              <i className="fas fa-arrow-left"></i>
+              <span>Back to list</span>
+            </button>
+            <div className="text-xs text-slate-600">
+              {selectedPdf.filename}
+            </div>
+          </div>
+
+          {/* Page Navigation */}
+          <div className="flex items-center justify-between py-2 border-t border-b border-slate-200">
+            <button
+              onClick={prevPage}
+              disabled={currentPage === 0}
+              className="p-1 text-slate-600 hover:text-slate-800 disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <i className="fas fa-chevron-left"></i>
+            </button>
+            <span className="text-sm text-slate-600">
+              Page {currentPage + 1} of {selectedPdf.total_pages}
+            </span>
+            <button
+              onClick={nextPage}
+              disabled={currentPage >= selectedPdf.total_pages - 1}
+              className="p-1 text-slate-600 hover:text-slate-800 disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <i className="fas fa-chevron-right"></i>
+            </button>
+          </div>
+
+          {/* PDF Page Viewer */}
+          <div className="relative">
+            {loading ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="animate-spin h-6 w-6 border-2 border-teal-500 border-t-transparent rounded-full"></div>
+              </div>
+            ) : pageData ? (
+              <div className="relative border border-slate-200 rounded overflow-hidden">
+                <img
+                  ref={imgRef}
+                  src={`data:image/png;base64,${pageData.image_base64}`}
+                  alt={`Page ${currentPage + 1}`}
+                  className="w-full h-auto"
+                  onLoad={() => setImgLoaded(true)}
+                  onError={() => setImgLoaded(false)}
+                />
+                
+                {/* Chunk overlays */}
+                {imgLoaded && pageData.chunks && imgRef.current && (() => {
+                  const img = imgRef.current;
+                  const scaleX = img.offsetWidth / img.naturalWidth;
+                  const scaleY = img.offsetHeight / img.naturalHeight;
+                  
+                  return pageData.chunks.map((chunk: any, index: number) => {
+                    if (!chunk.bbox) return null;
+                    
+                    return (
+                      <div
+                        key={chunk.chunk_id}
+                        className={`absolute border-2 cursor-pointer transition-all ${
+                          selectedPdfChunk === chunk.chunk_id 
+                            ? 'border-teal-500 bg-teal-500 bg-opacity-20' 
+                            : 'border-blue-500 bg-blue-500 bg-opacity-10 hover:bg-opacity-20'
+                        }`}
+                        style={{
+                          left: `${chunk.bbox.x * scaleX}px`,
+                          top: `${chunk.bbox.y * scaleY}px`, 
+                          width: `${chunk.bbox.width * scaleX}px`,
+                          height: `${chunk.bbox.height * scaleY}px`
+                        }}
+                        onClick={() => setSelectedPdfChunk(
+                          selectedPdfChunk === chunk.chunk_id ? null : chunk.chunk_id
+                        )}
+                        title={chunk.text}
+                      >
+                        <div className="absolute -top-5 -left-0.5 bg-blue-500 text-white text-xs px-1 rounded">
+                          {index + 1}
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            ) : (
+              <div className="flex items-center justify-center py-8 text-slate-500">
+                <i className="fas fa-exclamation-triangle mr-2"></i>
+                Failed to load page
+              </div>
+            )}
+          </div>
+
+          {/* Chunk Details */}
+          {selectedPdfChunk && pageData && (
+            <div className="mt-3 p-3 bg-slate-50 rounded border border-slate-200">
+              <h4 className="text-sm font-medium text-slate-800 mb-2">Selected Chunk</h4>
+              {(() => {
+                const chunk = pageData.chunks.find((c: any) => c.chunk_id === selectedPdfChunk);
+                return chunk ? (
+                  <div>
+                    <div className="text-xs text-slate-600 mb-1">
+                      ID: {chunk.chunk_id} • Confidence: {(chunk.confidence * 100).toFixed(1)}%
+                    </div>
+                    <div className="text-sm text-slate-700 max-h-32 overflow-y-auto">
+                      {chunk.text}
+                    </div>
+                  </div>
+                ) : null;
+              })()}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default RightInspector;
+
+
+================================================
+FILE: src/config/agents.ts
+================================================
+import { Agent } from '../types';
+
+export const AGENTS: Record<string, Agent> = {
+  smart: {
+    name: 'Smart Chat',
+    icon: 'fa-brain',
+    color: 'text-teal-600',
+    example: 'Find a standing desk under ₹50k with 12-mo 0% APR',
+    tooltip: 'AI router - finds the best agent for your query'
+  },
+  offerpilot: {
+    name: 'OfferPilot',
+    icon: 'fa-tags',
+    color: 'text-blue-600',
+    example: 'Show me wireless headphones under $200',
+    tooltip: 'Product search with financing options'
+  },
+  dispute: {
+    name: 'Dispute Copilot',
+    icon: 'fa-balance-scale',
+    color: 'text-red-600',
+    example: 'I was charged twice for the same purchase',
+    tooltip: 'Credit card dispute assistance'
+  },
+  collections: {
+    name: 'Collections',
+    icon: 'fa-credit-card',
+    color: 'text-indigo-600',
+    example: 'I need help with payment plan options',
+    tooltip: 'Hardship and payment assistance'
+  },
+  devcopilot: {
+    name: 'DevCopilot',
+    icon: 'fa-code',
+    color: 'text-green-600',
+    example: 'Generate Python code for payment processing',
+    tooltip: 'Code generation and API documentation'
+  },
+  carecredit: {
+    name: 'CareCredit',
+    icon: 'fa-heartbeat',
+    color: 'text-pink-600',
+    example: 'Analyze this dental treatment estimate',
+    tooltip: 'Medical/dental expense analysis'
+  },
+  narrator: {
+    name: 'Narrator',
+    icon: 'fa-chart-line',
+    color: 'text-orange-600',
+    example: 'Why did spend drop after 2025-07-31?',
+    tooltip: 'Portfolio analytics and business insights'
+  },
+  imagegen: {
+    name: 'ImageGen',
+    icon: 'fa-image',
+    color: 'text-violet-600',
+    example: 'Create a futuristic city with flying cars and neon lights',
+    tooltip: 'AI-powered image generation from text descriptions'
+  }
+};
 

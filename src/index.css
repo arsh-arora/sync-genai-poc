@@ -1,0 +1,61 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body {
+    @apply h-full;
+  }
+}
+
+@layer components {
+  .tool-chip {
+    @apply transition-all duration-200 ease-in-out;
+  }
+  
+  .tool-chip:hover {
+    @apply transform -translate-y-1 shadow-md;
+  }
+  
+  .redacted-text {
+    @apply bg-slate-800 text-slate-800 px-2 py-1 rounded select-none;
+    background-image: repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(255,255,255,.1) 2px, rgba(255,255,255,.1) 4px);
+    background-repeat: repeat-x;
+    background-position: 0 50%;
+    color: transparent;
+  }
+  
+  .redacted-text:hover::after {
+    content: " (Redacted)";
+    @apply text-slate-400 text-xs bg-slate-700 px-1.5 py-0.5 rounded ml-1;
+  }
+  
+  .markdown-content {
+    @apply leading-relaxed;
+  }
+  
+  .markdown-content pre {
+    @apply my-4 relative;
+  }
+  
+  .markdown-content code {
+    @apply font-mono;
+  }
+  
+  .markdown-content pre code {
+    @apply text-slate-100 bg-transparent p-0 rounded-none;
+  }
+}
+
+/* Syntax highlighting overrides */
+.hljs {
+  @apply bg-slate-900 text-slate-100 !important;
+}
+
+.hljs-keyword { @apply text-amber-400 !important; }
+.hljs-string { @apply text-emerald-400 !important; }
+.hljs-comment { @apply text-slate-500 !important; }
+.hljs-function { @apply text-blue-400 !important; }
+.hljs-variable { @apply text-purple-400 !important; }
+.hljs-number { @apply text-pink-400 !important; }
+.hljs-built_in { @apply text-cyan-400 !important; }

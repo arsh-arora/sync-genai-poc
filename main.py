@@ -10,16 +10,18 @@ import time
 from pathlib import Path
 from typing import Optional, Dict, Any, Union
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request, Response, UploadFile, File
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 import json
 
 from app.rag.core import init_docstore, GeminiEmbedder, index_markdown, build_retriever, retrieve
-from app.llm.gemini import chat_with_context
+from app.llm.gemini import chat_with_context, chat_with_context_and_fallback
 from app.tools.tavily_search import web_search_into_docstore, WebDisabled
 from app.router import route
 from app.agents.trustshield import TrustShield
@@ -42,13 +44,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Initialize FastAPI app
-app = FastAPI(
-    title="Synch GenAI PoC",
-    description="Complete GenAI-powered financial services platform",
-    version="2.0.0"
-)
-
 # Global components
 docstore = None
 embedder = None
@@ -56,6 +51,58 @@ retriever = None
 agents = {}  # Agent registry
 pdf_processor = None
 uploaded_pdfs = {}  # Store processed PDFs
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Initialize components on startup and cleanup on shutdown"""
+    global docstore, embedder, retriever, agents, pdf_processor
+    
+    try:
+        logger.info("Initializing document store...")
+        docstore = init_docstore()
+        
+        logger.info("Initializing Gemini embedder...")
+        embedder = GeminiEmbedder()
+        
+        logger.info("Indexing markdown documents...")
+        doc_count = index_markdown(docstore, embedder)
+        logger.info(f"Indexed {doc_count} document chunks")
+        
+        logger.info("Building retriever...")
+        retriever = build_retriever(docstore)
+        
+        logger.info("Initializing PDF processor...")
+        pdf_processor = LandingAIPDFProcessor()
+        
+        logger.info("Initializing agents...")
+        agents = {
+            'trustshield': TrustShield(docstore=docstore, embedder=embedder, retriever=retriever),
+            'offerpilot': OfferPilot(docstore=docstore, embedder=embedder, retriever=retriever),
+            'dispute': DisputeCopilot(docstore=docstore, embedder=embedder, retriever=retriever),
+            'collections': CollectionsAdvisor(docstore=docstore, embedder=embedder, retriever=retriever),
+            'devcopilot': DevCopilot(),
+            'carecredit': CareCredit(docstore=docstore, embedder=embedder, retriever=retriever),
+            'narrator': PortfolioIntelNarrator(docstore=docstore, embedder=embedder, retriever=retriever),
+            'imagegen': ImageGenAgent(),
+        }
+        
+        logger.info(f"Application startup complete - {len(agents)} agents initialized")
+    except Exception as e:
+        logger.error(f"Failed to initialize application: {e}")
+        raise
+    
+    yield
+    
+    # Cleanup on shutdown
+    logger.info("Application shutdown complete")
+
+# Initialize FastAPI app with lifespan
+app = FastAPI(
+    title="Synch GenAI PoC",
+    description="Complete GenAI-powered financial services platform",
+    version="2.0.0",
+    lifespan=lifespan
+)
 
 # PII Redactor Middleware
 class PIIRedactorMiddleware(BaseHTTPMiddleware):
@@ -158,53 +205,27 @@ class TrustShieldMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         return response
 
-# Add middleware (order matters - PII redaction first, then TrustShield)
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://localhost:8000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Add middleware (order matters - CORS first, then PII redaction, then TrustShield)
 app.add_middleware(TrustShieldMiddleware)
 app.add_middleware(PIIRedactorMiddleware)
 
-@app.on_event("startup")
-async def startup_event():
-    """Initialize components on startup"""
-    global docstore, embedder, retriever, agents, pdf_processor
-    
-    try:
-        logger.info("Initializing document store...")
-        docstore = init_docstore()
-        
-        logger.info("Initializing Gemini embedder...")
-        embedder = GeminiEmbedder()
-        
-        logger.info("Indexing markdown documents...")
-        doc_count = index_markdown(docstore, embedder)
-        logger.info(f"Indexed {doc_count} document chunks")
-        
-        logger.info("Building retriever...")
-        retriever = build_retriever(docstore)
-        
-        logger.info("Initializing PDF processor...")
-        pdf_processor = LandingAIPDFProcessor()
-        
-        logger.info("Initializing agents...")
-        agents = {
-            'trustshield': TrustShield(docstore=docstore, embedder=embedder, retriever=retriever),
-            'offerpilot': OfferPilot(docstore=docstore, embedder=embedder, retriever=retriever),
-            'dispute': DisputeCopilot(docstore=docstore, embedder=embedder, retriever=retriever),
-            'collections': CollectionsAdvisor(docstore=docstore, embedder=embedder, retriever=retriever),
-            'devcopilot': DevCopilot(),
-            'carecredit': CareCredit(docstore=docstore, embedder=embedder, retriever=retriever),
-            'narrator': PortfolioIntelNarrator(docstore=docstore, embedder=embedder, retriever=retriever),
-            'imagegen': ImageGenAgent(),
-        }
-        
-        logger.info(f"Application startup complete - {len(agents)} agents initialized")
-    except Exception as e:
-        logger.error(f"Failed to initialize application: {e}")
-        raise
+# Startup event handler has been moved to lifespan function above
 
 # Request/Response models
 class ChatRequest(BaseModel):
     message: str
     allow_tavily: Optional[bool] = False
+    allow_llm_knowledge: Optional[bool] = True
+    allow_web_search: Optional[bool] = False
 
 class ChatResponse(BaseModel):
     response: str
@@ -212,6 +233,8 @@ class ChatResponse(BaseModel):
     confidence: float
     sources: list[str] = []
     used_tavily: bool = False
+    fallback_used: Optional[str] = None
+    document_assessment: Optional[dict] = None
     image_data: Optional[str] = None
     image_format: Optional[str] = None
 
@@ -252,16 +275,26 @@ class ImageGenRequest(BaseModel):
     include_text: Optional[bool] = True
     style_hints: Optional[list[str]] = None
 
+# Serve static files from React build (only if directory exists)
+if Path("dist/assets").exists():
+    app.mount("/assets", StaticFiles(directory="dist/assets"), name="assets")
+
 # UI Routes
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    """Serve the modern React UI"""
+    """Serve the React UI"""
     try:
-        ui_path = Path("app/ui/modern.html")
+        # Try to serve the built React app first
+        ui_path = Path("dist/index.html")
         if ui_path.exists():
             return HTMLResponse(content=ui_path.read_text(encoding='utf-8'), status_code=200)
-        else:
-            return HTMLResponse(content="<h1>Modern UI not found</h1><p>Please check app/ui/modern.html</p>", status_code=404)
+        
+        # Fallback to the old HTML version
+        fallback_path = Path("app/ui/modern.html")
+        if fallback_path.exists():
+            return HTMLResponse(content=fallback_path.read_text(encoding='utf-8'), status_code=200)
+        
+        return HTMLResponse(content="<h1>UI not found</h1><p>Please run 'npm run build' to build the React app</p>", status_code=404)
     except Exception as e:
         return HTMLResponse(content=f"<h1>Error loading UI</h1><p>{str(e)}</p>", status_code=500)
 
@@ -332,18 +365,14 @@ async def smart_chat(request: ChatRequest):
                 sources = ["Image generation failed"]
             
         else:
-            # Fallback to RAG-based response
+            # Fallback to RAG-based response with intelligent fallbacks
             retrieved_docs = retrieve(retriever, embedder, request.message, k=5)
             
-            # Check for Tavily usage - trigger if enabled and low quality/relevance results
-            should_use_web = (
-                request.allow_tavily and 
+            # Check for Tavily web search (legacy support)
+            if (request.allow_tavily and 
                 os.getenv("ALLOW_TAVILY", "false").lower() == "true" and
                 (len(retrieved_docs) < 2 or 
-                 (len(retrieved_docs) > 0 and all(doc.get('score', 0) < 0.7 for doc in retrieved_docs)))
-            )
-            
-            if should_use_web:
+                 (len(retrieved_docs) > 0 and all(doc.get('score', 0) < 0.7 for doc in retrieved_docs)))):
                 try:
                     web_docs = web_search_into_docstore(docstore, embedder, request.message, max_results=3)
                     used_tavily = len(web_docs) > 0
@@ -359,12 +388,37 @@ async def smart_chat(request: ChatRequest):
                     logger.warning(f"Web search failed: {e}")
                     used_tavily = False
             
+            # Use intelligent fallback system
+            fallback_result = chat_with_context_and_fallback(
+                query=request.message,
+                context_documents=retrieved_docs,
+                allow_llm_knowledge=request.allow_llm_knowledge,
+                allow_web_search=request.allow_web_search
+            )
+            
+            response_text = fallback_result["response"]
+            fallback_used = fallback_result["fallback_used"]
+            confidence = fallback_result["confidence"]
+            document_assessment = fallback_result["document_assessment"]
+            
+            # Build sources list with assessment info
+            sources = []
             if retrieved_docs:
-                response_text = chat_with_context(request.message, retrieved_docs)
-                sources = [f"{doc['filename']} - Score: {doc['score']:.3f}" for doc in retrieved_docs[:3]]
-            else:
-                response_text = "I couldn't find relevant information to answer your question."
-                sources = []
+                sources.extend([f"{doc['filename']} - Score: {doc['score']:.3f}" for doc in retrieved_docs[:3]])
+            
+            # Add fallback information
+            if fallback_used:
+                sources.append(f"🔄 Fallback used: {fallback_used}")
+                sources.append(f"📊 Document quality: {document_assessment.get('document_quality_score', 0):.2f}")
+            
+            # Add document assessment details
+            if document_assessment:
+                assessment_reason = document_assessment.get('reason', 'No assessment')
+                sources.append(f"🔍 Assessment: {assessment_reason}")
+        
+        # Store fallback info for response
+        fallback_used_final = fallback_used if 'fallback_used' in locals() else None
+        document_assessment_final = document_assessment if 'document_assessment' in locals() else None
         
         # Add routing info to sources
         sources.insert(0, f"🎯 Routed to: {routed_agent} ({confidence:.1%} confidence)")
@@ -374,7 +428,9 @@ async def smart_chat(request: ChatRequest):
             agent=routed_agent,
             confidence=confidence,
             sources=sources,
-            used_tavily=used_tavily
+            used_tavily=used_tavily,
+            fallback_used=fallback_used_final,
+            document_assessment=document_assessment_final
         )
         
     except Exception as e:
