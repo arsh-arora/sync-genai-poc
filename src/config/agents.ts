@@ -51,7 +51,7 @@ export const AGENTS: Record<string, Agent> = {
     tooltip: 'Developer tools and API integration help'
   },
   carecredit: {
-    name: 'CareCredit',
+    name: 'WeCare',
     icon: 'fa-heart-pulse',
     color: 'text-pink-600',
     example: 'Analyze this dental treatment estimate',
