@@ -69,17 +69,17 @@ const RightInspector: React.FC<RightInspectorProps> = ({
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
         {activePanel === 'citations' && (
-          <div className="p-4">
-            <h3 className="font-medium text-slate-800 mb-4">Sources & Citations</h3>
+          <div className="p-6">
+            <h3 className="text-lg font-semibold text-slate-800 mb-6">Sources & Citations</h3>
             {citations.length > 0 ? (
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {citations.map((citation, index) => (
-                  <div key={index} className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-                    <div className="flex items-start space-x-2">
-                      <span className="flex-shrink-0 w-5 h-5 bg-teal-100 text-teal-700 rounded text-xs font-medium flex items-center justify-center">
+                  <div key={index} className="p-4 bg-slate-50 rounded-xl border border-slate-200 hover:border-slate-300 transition-colors">
+                    <div className="flex items-start space-x-3">
+                      <span className="flex-shrink-0 w-7 h-7 bg-teal-100 text-teal-700 rounded-full text-sm font-semibold flex items-center justify-center">
                         {index + 1}
                       </span>
-                      <div className="text-sm text-slate-700 leading-relaxed">
+                      <div className="text-base text-slate-700 leading-relaxed font-medium">
                         {citation}
                       </div>
                     </div>
@@ -87,36 +87,36 @@ const RightInspector: React.FC<RightInspectorProps> = ({
                 ))}
               </div>
             ) : (
-              <div className="text-center py-8">
-                <i className="fas fa-quote-left text-3xl text-slate-300 mb-3"></i>
-                <p className="text-slate-500 text-sm">No citations yet</p>
-                <p className="text-xs text-slate-400 mt-1">Citations will appear here when you chat with agents</p>
+              <div className="text-center py-12">
+                <i className="fas fa-quote-left text-4xl text-slate-300 mb-4"></i>
+                <p className="text-slate-500 text-base font-medium">No citations yet</p>
+                <p className="text-sm text-slate-400 mt-2">Citations will appear here when you chat with agents</p>
               </div>
             )}
           </div>
         )}
 
         {activePanel === 'tools' && (
-          <div className="p-4">
-            <h3 className="font-medium text-slate-800 mb-4">Tool Trace</h3>
+          <div className="p-6">
+            <h3 className="text-lg font-semibold text-slate-800 mb-6">Tool Trace</h3>
             {toolTrace.length > 0 ? (
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {toolTrace.map((trace, index) => (
-                  <div key={index} className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-                    <div className="text-sm font-medium text-slate-800 mb-2">
+                  <div key={index} className="p-4 bg-slate-50 rounded-xl border border-slate-200 hover:border-slate-300 transition-colors">
+                    <div className="text-base font-semibold text-slate-800 mb-3">
                       {trace.tool_name}
                     </div>
-                    <div className="text-xs text-slate-600">
-                      Status: {trace.status}
+                    <div className="text-sm text-slate-600 font-medium">
+                      Status: <span className="text-teal-600">{trace.status}</span>
                     </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="text-center py-8">
-                <i className="fas fa-cog text-3xl text-slate-300 mb-3"></i>
-                <p className="text-slate-500 text-sm">No tool traces yet</p>
-                <p className="text-xs text-slate-400 mt-1">Tool execution logs will appear here</p>
+              <div className="text-center py-12">
+                <i className="fas fa-cog text-4xl text-slate-300 mb-4"></i>
+                <p className="text-slate-500 text-base font-medium">No tool traces yet</p>
+                <p className="text-sm text-slate-400 mt-2">Tool execution logs will appear here</p>
               </div>
             )}
           </div>
@@ -225,33 +225,35 @@ function DocViewerPanel({ uploadedPdfs, selectedPdfChunk, setSelectedPdfChunk }:
   };
 
   return (
-    <div className="p-4">
-      <h3 className="font-medium text-slate-800 mb-4">Document Viewer</h3>
+    <div className="p-6">
+      <h3 className="text-lg font-semibold text-slate-800 mb-6">Document Viewer</h3>
       
       {uploadedPdfs.length === 0 ? (
-        <div className="text-center py-8">
-          <i className="fas fa-file-pdf text-3xl text-slate-300 mb-3"></i>
-          <p className="text-slate-500 text-sm">No PDFs uploaded</p>
-          <p className="text-xs text-slate-400 mt-1">Drag & drop PDF files to analyze them</p>
+        <div className="text-center py-12">
+          <i className="fas fa-file-pdf text-4xl text-slate-300 mb-4"></i>
+          <p className="text-slate-500 text-base font-medium">No PDFs uploaded</p>
+          <p className="text-sm text-slate-400 mt-2">Drag & drop PDF files to analyze them</p>
         </div>
       ) : !selectedPdf ? (
-        <div className="space-y-3">
+        <div className="space-y-4">
           {uploadedPdfs.map((pdf) => (
             <div 
               key={pdf.pdf_id} 
-              className="p-3 bg-slate-50 rounded-lg border border-slate-200 cursor-pointer hover:bg-slate-100"
+              className="p-4 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-slate-100 hover:border-slate-300 transition-all"
               onClick={() => handlePdfSelect(pdf)}
             >
-              <div className="flex items-center space-x-3">
-                <i className="fas fa-file-pdf text-red-500 text-lg"></i>
+              <div className="flex items-center space-x-4">
+                <i className="fas fa-file-pdf text-red-500 text-xl"></i>
                 <div className="flex-1">
-                  <div className="font-medium text-sm text-slate-800 truncate">
+                  <div className="font-semibold text-base text-slate-800 truncate mb-2">
                     {pdf.filename}
                   </div>
-                  <div className="text-xs text-slate-600 space-y-1 mt-1">
-                    <div>📄 {pdf.total_pages} pages</div>
-                    <div>🧩 {pdf.chunks} chunks</div>
-                    <div>⚡ {pdf.processing_time.toFixed(2)}s</div>
+                  <div className="text-sm text-slate-600 space-y-1">
+                    <div className="flex items-center space-x-4">
+                      <span>📄 {pdf.total_pages} pages</span>
+                      <span>🧩 {pdf.chunks} chunks</span>
+                      <span>⚡ {pdf.processing_time.toFixed(2)}s</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -259,39 +261,39 @@ function DocViewerPanel({ uploadedPdfs, selectedPdfChunk, setSelectedPdfChunk }:
           ))}
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-6">
           {/* PDF Header */}
           <div className="flex items-center justify-between">
             <button
               onClick={() => setSelectedPdf(null)}
-              className="text-teal-600 hover:text-teal-700 text-sm flex items-center space-x-1"
+              className="text-teal-600 hover:text-teal-700 text-sm font-medium flex items-center space-x-2 px-3 py-2 rounded-lg hover:bg-teal-50 transition-colors"
             >
               <i className="fas fa-arrow-left"></i>
               <span>Back to list</span>
             </button>
-            <div className="text-xs text-slate-600">
+            <div className="text-sm text-slate-600 font-medium bg-slate-100 px-3 py-1 rounded-full">
               {selectedPdf.filename}
             </div>
           </div>
 
           {/* Page Navigation */}
-          <div className="flex items-center justify-between py-2 border-t border-b border-slate-200">
+          <div className="flex items-center justify-between py-3 px-4 bg-slate-50 rounded-xl border border-slate-200">
             <button
               onClick={prevPage}
               disabled={currentPage === 0}
-              className="p-1 text-slate-600 hover:text-slate-800 disabled:opacity-30 disabled:cursor-not-allowed"
+              className="p-2 text-slate-600 hover:text-slate-800 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white rounded-lg transition-colors"
             >
-              <i className="fas fa-chevron-left"></i>
+              <i className="fas fa-chevron-left text-base"></i>
             </button>
-            <span className="text-sm text-slate-600">
+            <span className="text-base font-medium text-slate-700">
               Page {currentPage + 1} of {selectedPdf.total_pages}
             </span>
             <button
               onClick={nextPage}
               disabled={currentPage >= selectedPdf.total_pages - 1}
-              className="p-1 text-slate-600 hover:text-slate-800 disabled:opacity-30 disabled:cursor-not-allowed"
+              className="p-2 text-slate-600 hover:text-slate-800 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white rounded-lg transition-colors"
             >
-              <i className="fas fa-chevron-right"></i>
+              <i className="fas fa-chevron-right text-base"></i>
             </button>
           </div>
 

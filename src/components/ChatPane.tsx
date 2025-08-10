@@ -112,37 +112,38 @@ const ChatPane: React.FC<ChatPaneProps> = ({
       )}
 
       {/* Chat Header */}
-      <div className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <div className="flex items-center space-x-2">
-            <i className={`fas ${AGENTS[selectedAgent]?.icon || 'fa-robot'} ${AGENTS[selectedAgent]?.color || 'text-slate-600'}`}></i>
-            <span className="font-medium text-slate-800">{AGENTS[selectedAgent]?.name || 'AI Assistant'}</span>
+      <div className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
+        <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-3">
+            <i className={`fas ${AGENTS[selectedAgent]?.icon || 'fa-robot'} ${AGENTS[selectedAgent]?.color || 'text-slate-600'} text-xl`}></i>
+            <span className="font-semibold text-lg text-slate-800">{AGENTS[selectedAgent]?.name || 'AI Assistant'}</span>
           </div>
-          <span className="px-2 py-1 text-xs bg-slate-100 text-slate-600 rounded-md">
+          <span className="px-3 py-1 text-sm bg-slate-100 text-slate-600 rounded-full font-medium">
             {messages.length} messages
           </span>
         </div>
         <div className="flex items-center space-x-2 text-sm text-slate-500">
           <i className="fas fa-circle text-green-500"></i>
-          <span>Online</span>
+          <span className="font-medium">Online</span>
         </div>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-6">
+      <div className="flex-1 overflow-y-auto p-8 space-y-8">
         {messages.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <i className={`fas ${AGENTS[selectedAgent]?.icon || 'fa-robot'} ${AGENTS[selectedAgent]?.color || 'text-slate-400'} text-2xl`}></i>
+          <div className="text-center py-16">
+            <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <i className={`fas ${AGENTS[selectedAgent]?.icon || 'fa-robot'} ${AGENTS[selectedAgent]?.color || 'text-slate-400'} text-3xl`}></i>
             </div>
-            <h3 className="text-lg font-medium text-slate-800 mb-2">
+            <h3 className="text-xl font-semibold text-slate-800 mb-3">
               Chat with {AGENTS[selectedAgent]?.name || 'AI Assistant'}
             </h3>
-            <p className="text-slate-600 max-w-md mx-auto mb-4">
+            <p className="text-base text-slate-600 max-w-lg mx-auto mb-6 leading-relaxed">
               {AGENTS[selectedAgent]?.tooltip || 'Start a conversation by typing your message below.'}
             </p>
-            <div className="text-sm text-slate-500">
-              <p>Try: "{AGENTS[selectedAgent]?.example || 'Hello, how can you help me?'}"</p>
+            <div className="bg-slate-50 rounded-xl p-4 max-w-md mx-auto">
+              <p className="text-sm text-slate-500 mb-2 font-medium">Try this example:</p>
+              <p className="text-sm text-slate-700 italic">"{AGENTS[selectedAgent]?.example || 'Hello, how can you help me?'}"</p>
             </div>
           </div>
         ) : (
@@ -167,14 +168,14 @@ const ChatPane: React.FC<ChatPaneProps> = ({
       </div>
 
       {/* Input */}
-      <div className="bg-white border-t border-slate-200 p-4">
-        <div className="flex items-end space-x-3">
+      <div className="bg-white border-t border-slate-200 p-6">
+        <div className="flex items-end space-x-4">
           <button
             onClick={handleFileUpload}
-            className="p-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
+            className="p-3 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors"
             title="Upload PDF"
           >
-            <i className="fas fa-plus text-lg"></i>
+            <i className="fas fa-plus text-xl"></i>
           </button>
           
           <div className="flex-1">
@@ -182,8 +183,8 @@ const ChatPane: React.FC<ChatPaneProps> = ({
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               onKeyDown={handleKeyPress}
-              placeholder={`Ask to ${AGENTS[selectedAgent]?.name || 'AI Assistant'}...`}
-              className="w-full px-4 py-3 border border-slate-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+              placeholder={`Ask ${AGENTS[selectedAgent]?.name || 'AI Assistant'}...`}
+              className="w-full px-5 py-4 text-base border border-slate-300 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent placeholder-slate-400"
               rows={1}
               disabled={isLoading}
             />
@@ -192,14 +193,14 @@ const ChatPane: React.FC<ChatPaneProps> = ({
           <button
             onClick={onSendMessage}
             disabled={!inputText.trim() || isLoading}
-            className="px-4 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="px-5 py-4 bg-teal-600 text-white rounded-xl hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            <i className="fas fa-paper-plane"></i>
+            <i className="fas fa-paper-plane text-base"></i>
           </button>
         </div>
-        <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
-          <span>Use Tavily • Shift+Enter for new line</span>
-          <span>0 chars • Shift+Enter to send</span>
+        <div className="mt-3 flex items-center justify-between text-sm text-slate-500">
+          <span className="font-medium">Press Enter to send • Shift+Enter for new line</span>
+          <span className="font-medium">{inputText.length} characters</span>
         </div>
       </div>
 

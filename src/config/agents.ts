@@ -12,33 +12,47 @@ export const AGENTS: Record<string, Agent> = {
     name: 'OfferPilot',
     icon: 'fa-tags',
     color: 'text-blue-600',
-    example: 'Show me wireless headphones under $200',
-    tooltip: 'Product search with financing options'
+    example: 'Show me laptops under ₹80k with financing options',
+    tooltip: 'Product search with financing pre-qualification'
+  },
+  trustshield: {
+    name: 'TrustShield',
+    icon: 'fa-shield-halved',
+    color: 'text-red-600',
+    example: 'I got an email asking for gift cards as refund',
+    tooltip: 'Fraud detection and PII protection system'
   },
   dispute: {
-    name: 'Dispute Copilot',
-    icon: 'fa-balance-scale',
-    color: 'text-red-600',
-    example: 'I was charged twice for the same purchase',
-    tooltip: 'Credit card dispute assistance'
+    name: 'Dispute',
+    icon: 'fa-gavel',
+    color: 'text-amber-600',
+    example: 'Charged twice for ₹12,499 at Amazon on Dec 15th',
+    tooltip: 'Transaction dispute resolution assistant'
   },
   collections: {
     name: 'Collections',
-    icon: 'fa-credit-card',
-    color: 'text-indigo-600',
-    example: 'I need help with payment plan options',
-    tooltip: 'Hardship and payment assistance'
+    icon: 'fa-handshake',
+    color: 'text-green-600',
+    example: 'I have ₹25k balance at 24% APR, need payment options',
+    tooltip: 'Hardship and payment plan assistance'
+  },
+  contracts: {
+    name: 'Contracts',
+    icon: 'fa-file-contract',
+    color: 'text-purple-600',
+    example: 'Review my merchant agreement for key obligations',
+    tooltip: 'Contract analysis and obligation tracking'
   },
   devcopilot: {
     name: 'DevCopilot',
     icon: 'fa-code',
-    color: 'text-green-600',
-    example: 'Generate Python code for payment processing',
-    tooltip: 'Code generation and API documentation'
+    color: 'text-indigo-600',
+    example: 'Generate Python code for payments API integration',
+    tooltip: 'Developer tools and API integration help'
   },
   carecredit: {
     name: 'CareCredit',
-    icon: 'fa-heartbeat',
+    icon: 'fa-heart-pulse',
     color: 'text-pink-600',
     example: 'Analyze this dental treatment estimate',
     tooltip: 'Medical/dental expense analysis'
