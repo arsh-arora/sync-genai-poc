@@ -51,11 +51,12 @@ retriever = None
 agents = {}  # Agent registry
 pdf_processor = None
 uploaded_pdfs = {}  # Store processed PDFs
+multi_agent_supervisor = None  # LangGraph multi-agent orchestrator
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize components on startup and cleanup on shutdown"""
-    global docstore, embedder, retriever, agents, pdf_processor
+    global docstore, embedder, retriever, agents, pdf_processor, multi_agent_supervisor
     
     try:
         logger.info("Initializing document store...")
@@ -86,7 +87,14 @@ async def lifespan(app: FastAPI):
             'imagegen': ImageGenAgent(),
         }
         
-        logger.info(f"Application startup complete - {len(agents)} agents initialized")
+        logger.info("Initializing LangGraph multi-agent supervisor...")
+        from app.multi_agent.supervisor import FinancialServicesSupervisor
+        multi_agent_supervisor = FinancialServicesSupervisor(
+            agents=agents,
+            google_api_key=os.getenv("GOOGLE_API_KEY")
+        )
+        
+        logger.info(f"Application startup complete - {len(agents)} agents + multi-agent supervisor initialized")
     except Exception as e:
         logger.error(f"Failed to initialize application: {e}")
         raise
@@ -303,138 +311,37 @@ async def classic_ui():
     """Serve the classic UI as backup"""
     return HTMLResponse(content=UI_HTML, status_code=200)
 
-# Smart Chat Endpoint
+# Enhanced Smart Chat Endpoint with Multi-Agent Orchestration
 @app.post("/chat", response_model=ChatResponse)
 async def smart_chat(request: ChatRequest):
-    """Smart chat with router dispatch to appropriate agent"""
-    if not all([docstore, embedder, retriever]) or not agents:
+    """Enhanced Smart Chat with LangGraph multi-agent orchestration and intelligent fallbacks"""
+    if not all([docstore, embedder, retriever]) or not agents or not multi_agent_supervisor:
         raise HTTPException(status_code=500, detail="System components not initialized")
     
     try:
-        logger.info(f"Processing chat message: {request.message}")
+        logger.info(f"Processing chat message with enhanced Smart Chat: {request.message}")
         
-        # Route the query to appropriate agent
-        routing_result = route(request.message)
-        routed_agent = routing_result["agent"]
-        confidence = routing_result["confidence"]
-        
-        logger.info(f"Query routed to '{routed_agent}' agent with confidence {confidence:.3f}")
-        
-        # Initialize Tavily usage flag
-        used_tavily = False
-        
-        # Dispatch to specific agent based on routing
-        if routed_agent == "offerpilot" and "offerpilot" in agents:
-            agent_result = agents["offerpilot"].process_query(request.message)
-            response_text = f"Found {len(agent_result.items)} products. Pre-qualification: {'Eligible' if agent_result.prequal.eligible else 'Not eligible'}"
-            sources = [f"Products: {len(agent_result.items)}", f"Pre-qual: {agent_result.prequal.reason}"]
-            
-        elif routed_agent == "dispute" and "dispute" in agents:
-            agent_result = agents["dispute"].process_dispute(request.message)
-            response_text = f"Dispute triage: {agent_result.triage}. Merchant resolution available."
-            sources = [f"Triage: {agent_result.triage}", f"Resolution steps: {len(agent_result.merchant_resolution.checklist)}"]
-            
-        elif routed_agent == "collections" and "collections" in agents:
-            # Need customer state for collections - create from message parsing
-            customer_state = CustomerState(balance=1000.0, apr=24.99, bucket="30-60")
-            agent_result = agents["collections"].process_hardship_request(customer_state)
-            response_text = f"Generated {len(agent_result.plans)} hardship plans"
-            sources = [f"Plans available: {len(agent_result.plans)}"]
-            
-        elif routed_agent == "imagegen" and "imagegen" in agents:
-            from app.agents.imagegen import ImageGenRequest as AgentImageGenRequest
-            image_request = AgentImageGenRequest(prompt=request.message)
-            agent_result = agents["imagegen"].process_request(image_request)
-            
-            if agent_result.success:
-                response_text = agent_result.generated_text or f"Generated image: {request.message}"
-                sources = [f"Image generated successfully", f"Format: {agent_result.image_format}"]
-                
-                # Add image data to response (we'll handle this in UI)
-                return ChatResponse(
-                    response=response_text,
-                    agent=routed_agent,
-                    confidence=confidence,
-                    sources=sources,
-                    used_tavily=used_tavily,
-                    image_data=agent_result.image_base64,  # Add this field
-                    image_format=agent_result.image_format
-                )
-            else:
-                response_text = f"Failed to generate image: {agent_result.error_message}"
-                sources = ["Image generation failed"]
-            
-        else:
-            # Fallback to RAG-based response with intelligent fallbacks
-            retrieved_docs = retrieve(retriever, embedder, request.message, k=5)
-            
-            # Check for Tavily web search (legacy support)
-            if (request.allow_tavily and 
-                os.getenv("ALLOW_TAVILY", "false").lower() == "true" and
-                (len(retrieved_docs) < 2 or 
-                 (len(retrieved_docs) > 0 and all(doc.get('score', 0) < 0.7 for doc in retrieved_docs)))):
-                try:
-                    web_docs = web_search_into_docstore(docstore, embedder, request.message, max_results=3)
-                    used_tavily = len(web_docs) > 0
-                    logger.info(f"Used Tavily web search: {used_tavily}")
-                    
-                    # Re-retrieve documents now that we have web content in the docstore
-                    if used_tavily:
-                        logger.info("Re-retrieving documents including web search results...")
-                        retrieved_docs = retrieve(retriever, embedder, request.message, k=5)
-                        logger.info(f"Re-retrieved {len(retrieved_docs)} documents with web content")
-                        
-                except Exception as e:
-                    logger.warning(f"Web search failed: {e}")
-                    used_tavily = False
-            
-            # Use intelligent fallback system
-            fallback_result = chat_with_context_and_fallback(
-                query=request.message,
-                context_documents=retrieved_docs,
-                allow_llm_knowledge=request.allow_llm_knowledge,
-                allow_web_search=request.allow_web_search
-            )
-            
-            response_text = fallback_result["response"]
-            fallback_used = fallback_result["fallback_used"]
-            confidence = fallback_result["confidence"]
-            document_assessment = fallback_result["document_assessment"]
-            
-            # Build sources list with assessment info
-            sources = []
-            if retrieved_docs:
-                sources.extend([f"{doc['filename']} - Score: {doc['score']:.3f}" for doc in retrieved_docs[:3]])
-            
-            # Add fallback information
-            if fallback_used:
-                sources.append(f"🔄 Fallback used: {fallback_used}")
-                sources.append(f"📊 Document quality: {document_assessment.get('document_quality_score', 0):.2f}")
-            
-            # Add document assessment details
-            if document_assessment:
-                assessment_reason = document_assessment.get('reason', 'No assessment')
-                sources.append(f"🔍 Assessment: {assessment_reason}")
-        
-        # Store fallback info for response
-        fallback_used_final = fallback_used if 'fallback_used' in locals() else None
-        document_assessment_final = document_assessment if 'document_assessment' in locals() else None
-        
-        # Add routing info to sources
-        sources.insert(0, f"🎯 Routed to: {routed_agent} ({confidence:.1%} confidence)")
-        
-        return ChatResponse(
-            response=response_text,
-            agent=routed_agent,
-            confidence=confidence,
-            sources=sources,
-            used_tavily=used_tavily,
-            fallback_used=fallback_used_final,
-            document_assessment=document_assessment_final
+        # Use LangGraph multi-agent supervisor for orchestration
+        result = await multi_agent_supervisor.process_query(
+            query=request.message,
+            allow_tavily=request.allow_tavily,
+            allow_llm_knowledge=request.allow_llm_knowledge,
+            allow_web_search=request.allow_web_search,
+            user_context={
+                "timestamp": time.time(),
+                "session_id": "default"  # Could be enhanced with actual session management
+            }
         )
         
+        # Debug: Print raw API response
+        logger.info(f"🔍 Raw API response from supervisor: {result}")
+        logger.info(f"🔍 Response type check - response: {type(result.get('response'))}, value: '{result.get('response')}'")
+        
+        # Return the formatted response from supervisor
+        return ChatResponse(**result)
+        
     except Exception as e:
-        logger.error(f"Error processing chat: {e}")
+        logger.error(f"Error processing chat with multi-agent system: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # Agent-specific endpoints for tabbed UI testing

@@ -26,3 +26,8 @@ spacy==3.8.2
 
 # PDF Processing
 PyMuPDF==1.24.14
+
+# LangGraph Multi-Agent Orchestration
+langgraph==0.2.53
+langchain-core>=0.3.19
+langchain-google-genai>=2.0.4
