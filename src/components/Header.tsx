@@ -9,6 +9,8 @@ interface HeaderProps {
   setAllowWebSearch: (value: boolean) => void;
   onClear: () => void;
   onExport: () => void;
+  userType?: string;
+  onResetPersona?: () => void;
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -19,7 +21,9 @@ const Header: React.FC<HeaderProps> = ({
   allowWebSearch,
   setAllowWebSearch,
   onClear,
-  onExport
+  onExport,
+  userType,
+  onResetPersona
 }) => {
   return (
     <header className="bg-white border-b border-slate-200 px-6 py-3">
@@ -32,6 +36,26 @@ const Header: React.FC<HeaderProps> = ({
             <span className="px-2 py-1 text-xs bg-slate-100 text-slate-600 rounded-md">
               Local • No DB
             </span>
+            {userType && (
+              <div className="flex items-center space-x-2">
+                <span className={`px-3 py-1 text-xs rounded-md font-medium ${
+                  userType === 'consumer' 
+                    ? 'bg-blue-100 text-blue-700' 
+                    : 'bg-purple-100 text-purple-700'
+                }`}>
+                  {userType === 'consumer' ? '👤 Consumer' : '🤝 Partner'}
+                </span>
+                {onResetPersona && (
+                  <button
+                    onClick={onResetPersona}
+                    className="px-2 py-1 text-xs text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors"
+                    title="Switch persona"
+                  >
+                    <i className="fas fa-sync"></i>
+                  </button>
+                )}
+              </div>
+            )}
             
             {/* Elegant Toggle Switches */}
             <div className="flex items-center space-x-6 ml-4">

@@ -1,4 +1,4 @@
-import { Agent } from '../types';
+import { Agent, UserType } from '../types';
 
 export const AGENTS: Record<string, Agent> = {
   smart: {
@@ -71,4 +71,46 @@ export const AGENTS: Record<string, Agent> = {
     example: 'Create a futuristic city with flying cars and neon lights',
     tooltip: 'AI-powered image generation from text descriptions'
   }
+};
+
+// Define which agents are available for each persona
+export const PERSONA_AGENTS: Record<UserType, string[]> = {
+  consumer: ['smart', 'offerpilot', 'dispute', 'collections', 'contracts', 'carecredit', 'narrator'],
+  partner: ['smart', 'devcopilot', 'narrator', 'imagegen', 'contracts', 'offerpilot', 'carecredit'] // Core + Contextual
+};
+
+// Partner-specific agent categories
+export const PARTNER_AGENT_CATEGORIES = {
+  'always_on': ['trustshield'], // Runs as middleware, not selectable
+  'core': ['devcopilot', 'narrator', 'imagegen', 'contracts'],
+  'contextual': ['offerpilot', 'carecredit'] // Available when specifically requested
+};
+
+// Partner-specific descriptions
+export const PARTNER_AGENT_DESCRIPTIONS: Record<string, string> = {
+  devcopilot: 'Partner onboarding, widget/APIs, webhooks, POS integration',
+  narrator: 'Portfolio analytics, campaign metrics, funnel diagnostics', 
+  imagegen: 'Co-branded creative with compliant promo copy',
+  contracts: 'Partner terms, data sharing, promo obligations',
+  offerpilot: 'Promo structuring and assortment checks for campaigns',
+  carecredit: 'Provider enrollment checks and eligibility language'
+};
+
+// Helper function to get available agents for a persona
+export const getAvailableAgents = (userType: UserType): Record<string, Agent> => {
+  const availableAgentKeys = PERSONA_AGENTS[userType];
+  const filteredAgents: Record<string, Agent> = {};
+  
+  availableAgentKeys.forEach(key => {
+    if (AGENTS[key]) {
+      // Use Partner-specific description if available
+      const agent = { ...AGENTS[key] };
+      if (userType === 'partner' && PARTNER_AGENT_DESCRIPTIONS[key]) {
+        agent.tooltip = PARTNER_AGENT_DESCRIPTIONS[key];
+      }
+      filteredAgents[key] = agent;
+    }
+  });
+  
+  return filteredAgents;
 };

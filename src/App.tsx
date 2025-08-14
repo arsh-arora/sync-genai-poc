@@ -1,12 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Message, ChatRequest, ChatResponse, UploadedPdf } from './types';
+import { Message, ChatRequest, ChatResponse, UploadedPdf, UserType } from './types';
 import { AGENTS } from './config/agents';
 import Header from './components/Header';
 import LeftRail from './components/LeftRail';
 import ChatPane from './components/ChatPane';
 import RightInspector from './components/RightInspector';
+import LandingPage from './components/LandingPage';
 
 function App() {
+  const [userType, setUserType] = useState<UserType | null>(() => {
+    const stored = localStorage.getItem('userType');
+    return stored as UserType | null;
+  });
   const [selectedAgent, setSelectedAgent] = useState('smart');
   const [allowTavily, setAllowTavily] = useState(false);
   const [allowLlmKnowledge, setAllowLlmKnowledge] = useState(true);
@@ -48,11 +53,12 @@ function App() {
             message: inputText, 
             allow_tavily: allowTavily,
             allow_llm_knowledge: allowLlmKnowledge,
-            allow_web_search: allowWebSearch
+            allow_web_search: allowWebSearch,
+            user_type: userType
           }
         : selectedAgent === 'imagegen'
-        ? { prompt: inputText, include_text: true, style_hints: [] }
-        : { query: inputText };
+        ? { prompt: inputText, include_text: true, style_hints: [], user_type: userType }
+        : { query: inputText, user_type: userType };
 
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -173,6 +179,24 @@ function App() {
     }
   };
 
+  const handleUserTypeSelect = (selectedUserType: UserType) => {
+    setUserType(selectedUserType);
+    localStorage.setItem('userType', selectedUserType);
+  };
+
+  const handleResetPersona = () => {
+    setUserType(null);
+    localStorage.removeItem('userType');
+    setMessages([]);
+    setCitations([]);
+    setToolTrace([]);
+  };
+
+  // Show landing page if user type not selected
+  if (!userType) {
+    return <LandingPage onUserTypeSelect={handleUserTypeSelect} />;
+  }
+
   return (
     <div className="h-screen flex flex-col bg-slate-50">
       {/* Header */}
@@ -185,6 +209,8 @@ function App() {
         setAllowWebSearch={setAllowWebSearch}
         onClear={clearChat}
         onExport={exportJSON}
+        userType={userType}
+        onResetPersona={handleResetPersona}
       />
 
       {/* Main Content */}
@@ -194,6 +220,7 @@ function App() {
           selectedAgent={selectedAgent}
           onSelectAgent={handleSelectAgent}
           onUseExample={handleUseExample}
+          userType={userType}
         />
 
         {/* Chat Pane */}

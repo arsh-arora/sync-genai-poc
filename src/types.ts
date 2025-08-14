@@ -45,6 +45,7 @@ export interface ChatRequest {
   allow_tavily?: boolean;
   allow_llm_knowledge?: boolean;
   allow_web_search?: boolean;
+  user_type?: UserType;
 }
 
 export interface ChatResponse {
@@ -66,3 +67,5 @@ export interface UploadedPdf {
   chunks: number;
   processing_time: number;
 }
+
+export type UserType = 'consumer' | 'partner';

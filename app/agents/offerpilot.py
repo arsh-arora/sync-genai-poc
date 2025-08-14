@@ -101,19 +101,20 @@ class OfferPilot:
             self.merchant_offers = {}
             self.offers_metadata = {}
     
-    def process_query(self, query: str, budget: Optional[float] = None) -> OfferPilotResponse:
+    def process_query(self, query: str, budget: Optional[float] = None, user_type: str = "consumer") -> OfferPilotResponse:
         """
         Main processing pipeline for OfferPilot
         
         Args:
             query: User search query
             budget: Optional budget constraint
+            user_type: consumer or partner (for logging only)
             
         Returns:
             OfferPilotResponse with products, financing, and pre-qualification
         """
         try:
-            logger.info(f"Processing OfferPilot query: {query}, budget: {budget}")
+            logger.info(f"Processing OfferPilot query: {query}, budget: {budget}, user_type: {user_type}")
             
             # Step 1: Search marketplace
             search_results = self.marketplace_search(query, max_results=8)

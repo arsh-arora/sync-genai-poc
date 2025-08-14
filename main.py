@@ -184,8 +184,11 @@ class TrustShieldMiddleware(BaseHTTPMiddleware):
                             break
                     
                     if text_to_scan:
-                        # Run TrustShield scan
-                        shield_result = agents['trustshield'].scan(text_to_scan)
+                        # Get user_type from request
+                        user_type = body_data.get('user_type', 'consumer')
+                        
+                        # Run TrustShield scan with persona context
+                        shield_result = agents['trustshield'].scan(text_to_scan, user_type)
                         
                         if shield_result["decision"] == "block":
                             logger.warning(f"TrustShield BLOCKED request to {request.url.path}")
@@ -234,6 +237,7 @@ class ChatRequest(BaseModel):
     allow_tavily: Optional[bool] = False
     allow_llm_knowledge: Optional[bool] = True
     allow_web_search: Optional[bool] = False
+    user_type: Optional[str] = "consumer"
 
 class ChatResponse(BaseModel):
     response: str
@@ -249,12 +253,14 @@ class ChatResponse(BaseModel):
 class OfferRequest(BaseModel):
     query: str
     budget: Optional[float] = None
+    user_type: Optional[str] = "consumer"
 
 class DisputeRequest(BaseModel):
     narrative: str
     merchant: Optional[str] = None
     amount: Optional[float] = None
     uploaded_text: Optional[str] = None
+    user_type: Optional[str] = "consumer"
 
 class CollectionsRequest(BaseModel):
     balance: float
@@ -263,6 +269,7 @@ class CollectionsRequest(BaseModel):
     income_monthly: Optional[float] = None
     expenses_monthly: Optional[float] = None
     preferences: Optional[dict] = None
+    user_type: Optional[str] = "consumer"
 
 class DevCopilotRequest(BaseModel):
     service: str
@@ -274,9 +281,11 @@ class CareCreditRequest(BaseModel):
     estimate_text: str
     location: Optional[str] = None
     insurance: Optional[dict] = None
+    user_type: Optional[str] = "consumer"
 
 class NarratorRequest(BaseModel):
     question: str
+    user_type: Optional[str] = "consumer"
 
 class ImageGenRequest(BaseModel):
     prompt: str
@@ -329,7 +338,8 @@ async def smart_chat(request: ChatRequest):
             allow_web_search=request.allow_web_search,
             user_context={
                 "timestamp": time.time(),
-                "session_id": "default"  # Could be enhanced with actual session management
+                "session_id": "default",  # Could be enhanced with actual session management
+                "user_type": request.user_type
             }
         )
         
@@ -352,7 +362,7 @@ async def agent_offerpilot(request: OfferRequest):
         raise HTTPException(status_code=500, detail="OfferPilot not initialized")
     
     try:
-        result = agents["offerpilot"].process_query(request.query, request.budget)
+        result = agents["offerpilot"].process_query(request.query, request.budget, request.user_type)
         return result.dict()
     except Exception as e:
         logger.error(f"OfferPilot error: {e}")

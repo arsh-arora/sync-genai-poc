@@ -66,18 +66,19 @@ class TrustShield:
         # High-entropy patterns for gift cards, etc.
         self.entropy_patterns = self._initialize_entropy_patterns()
     
-    def scan(self, text: str) -> Dict[str, Any]:
+    def scan(self, text: str, user_type: str = "consumer") -> Dict[str, Any]:
         """
         Comprehensive scan of text for threats, PII, and scams
         
         Args:
             text: Text to analyze
+            user_type: consumer or partner (for logging only)
             
         Returns:
             Dictionary with decision, reasons, redacted text, next steps, and citations
         """
         try:
-            logger.info(f"TrustShield scanning text: {text[:100]}...")
+            logger.info(f"TrustShield scanning text for {user_type}: {text[:100]}...")
             
             # Initialize result structure
             result = {

@@ -1,10 +1,12 @@
 import React from 'react';
-import { AGENTS } from '../config/agents';
+import { getAvailableAgents } from '../config/agents';
+import { UserType } from '../types';
 
 interface LeftRailProps {
   selectedAgent: string;
   onSelectAgent: (agent: string) => void;
   onUseExample: (agent: string) => void;
+  userType: UserType;
 }
 
 interface AgentItemProps {
@@ -50,15 +52,22 @@ function AgentItem({ agentKey, agent, isSelected, onSelect, onUseExample }: Agen
   );
 }
 
-const LeftRail: React.FC<LeftRailProps> = ({ selectedAgent, onSelectAgent, onUseExample }) => {
+const LeftRail: React.FC<LeftRailProps> = ({ selectedAgent, onSelectAgent, onUseExample, userType }) => {
+  const availableAgents = getAvailableAgents(userType);
+  
   return (
     <div className="w-72 bg-white border-r border-slate-200 flex flex-col">
       <div className="p-6 border-b border-slate-200">
         <h2 className="text-lg font-semibold text-slate-800">Agents</h2>
-        <p className="text-sm text-slate-500 mt-1">Choose your AI specialist</p>
+        <p className="text-sm text-slate-500 mt-1">
+          {userType === 'consumer' ? 'Personal AI specialists' : 'Business AI tools'}
+        </p>
+        <div className="mt-2 text-xs text-slate-400 bg-slate-50 px-2 py-1 rounded">
+          {userType === 'consumer' ? '👤 Consumer' : '🤝 Partner'}
+        </div>
       </div>
       <div className="flex-1 overflow-y-auto">
-        {Object.entries(AGENTS).map(([key, agent]) => (
+        {Object.entries(availableAgents).map(([key, agent]) => (
           <AgentItem
             key={key}
             agentKey={key}
