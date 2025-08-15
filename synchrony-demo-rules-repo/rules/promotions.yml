@@ -1,0 +1,34 @@
+# Demo promotions for several partners (illustrative)
+partners:
+  - partner_id: "urbanliving"
+    categories_allowed: ["furniture", "home_decor"]
+    promos:
+      - type: "equal_payment"
+        months: 12
+        min_purchase: 20000
+        disclosure_key: "equal_payment_generic"
+      - type: "deferred_interest"
+        months: 12
+        min_purchase: 20000
+        disclosure_key: "deferred_interest_generic"
+  - partner_id: "homearc"
+    categories_allowed: ["furniture", "appliances"]
+    promos:
+      - type: "equal_payment"
+        months: 6
+        min_purchase: 10000
+        disclosure_key: "equal_payment_generic"
+      - type: "equal_payment"
+        months: 18
+        min_purchase: 40000
+        disclosure_key: "equal_payment_generic"
+  - partner_id: "wheelworks"
+    categories_allowed: ["tires", "auto"]
+    promos:
+      - type: "deferred_interest"
+        months: 6
+        min_purchase: 5000
+        disclosure_key: "deferred_interest_generic"
+generic_defaults:
+  equal_payment_months: [6, 12, 18]
+  deferred_interest_months: [6, 12]

@@ -1,0 +1,10 @@
+{
+  "input": "Create an A4 in-store flyer for 12-mo equal payments",
+  "expect_contains": [
+    "preview",
+    "headline",
+    "CTA",
+    "legal",
+    "equal_payment_generic"
+  ]
+}

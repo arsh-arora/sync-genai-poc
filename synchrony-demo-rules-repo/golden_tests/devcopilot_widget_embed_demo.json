@@ -1,0 +1,9 @@
+{
+  "input": "How do I embed the prequal widget?",
+  "expect_contains": [
+    "3-step",
+    "onComplete",
+    "sandbox",
+    "anchored citation"
+  ]
+}

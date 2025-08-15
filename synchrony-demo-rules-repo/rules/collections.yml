@@ -1,0 +1,56 @@
+plans:
+  interest_only:
+    name: "Interest-Only Payments"
+    duration_months: 3
+    description: "Pay only interest charges for a temporary period"
+    payment_type: "interest_only"
+    min_payment_percent: 0.02  # 2% of balance
+    disclosure_key: "collections_generic"
+    eligibility:
+      min_balance: 100.00
+      max_balance: 10000.00
+  short_deferral:
+    name: "Short-Term Deferral"
+    duration_months: 2
+    description: "Skip payments temporarily, with interest accruing"
+    payment_type: "deferred"
+    min_payment_percent: 0.00  # No payments during deferral
+    disclosure_key: "collections_generic"
+    eligibility:
+      min_balance: 50.00
+      max_balance: 5000.00
+  re_age:
+    name: "Account Re-Aging"
+    duration_months: 6
+    description: "Restart payment schedule with reduced amounts"
+    payment_type: "reduced"
+    min_payment_percent: 0.015  # 1.5% of balance
+    disclosure_key: "collections_generic"
+    eligibility:
+      min_balance: 200.00
+      max_balance: 25000.00
+  fixed_term:
+    name: "Fixed Payment Plan"
+    duration_months: 12
+    description: "Fixed monthly payments to resolve balance"
+    payment_type: "fixed"
+    min_payment_percent: 0.025  # 2.5% of balance minimum
+    disclosure_key: "collections_generic"
+    eligibility:
+      min_balance: 300.00
+      max_balance: 50000.00
+
+scoring:
+  weights:
+    affordability: 0.4    # Customer's ability to pay
+    bank_npv: 0.3        # Bank's net present value
+    cure_probability: 0.3 # Likelihood of successful resolution
+
+simulation_params:
+  demo_apr: 0.2399  # 23.99% APR for simulations
+  late_fee: 39.00
+  processing_fee: 0.00
+  discount_rate: 0.08  # For NPV calculations
+
+disclosures:
+  collections_generic: "Payment plan terms subject to approval. Interest and fees may apply. Contact us for full terms and conditions."

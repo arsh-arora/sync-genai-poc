@@ -1,0 +1,20 @@
+disclosures:
+  equal_payment_generic: |
+    Equal monthly payments required for the promo period. Taxes and fees may apply.
+    Missing or late payments may incur fees. Demo copy — consult actual issuer terms.
+  deferred_interest_generic: |
+    No interest if paid in full within the promo period. If not paid in full, interest
+    accrues from the purchase date at the standard rate. Demo copy — confirm actual terms.
+  collections_generic: |
+    Payment plan availability is subject to eligibility. Illustrative figures only for demo.
+  carecredit_generic: |
+    Subject to credit approval. Minimum purchase may be required for promotional financing.
+    Ask your provider for details. Demo copy.
+  marketing_generic: |
+    Offers subject to credit approval and change. Demo assets; not for production use.
+keys:
+  - equal_payment_generic
+  - deferred_interest_generic
+  - collections_generic
+  - carecredit_generic
+  - marketing_generic

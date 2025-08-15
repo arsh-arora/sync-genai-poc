@@ -52,12 +52,8 @@ class Citation(BaseModel):
     snippet: str
 
 class CreditResponse(BaseModel):
-    explanation: str
-    line_items: List[LineItem]
-    providers: List[Provider]
-    financing: List[FinancingOption]
-    oopp: OOPPResult
-    citations: List[Citation]
+    response: str  # counts + 12-mo explanation + next steps
+    metadata: Dict[str, Any]  # ui_cards and disclosures
 
 @dataclass
 class ParsedProcedure:
@@ -72,33 +68,48 @@ class CareCredit:
     CareCredit Treatment Translator for medical/dental estimates
     """
     
-    def __init__(self, docstore=None, embedder=None, retriever=None):
+    def __init__(self, docstore=None, embedder=None, retriever=None, rules_loader=None):
         """Initialize CareCredit agent with required components"""
         self.docstore = docstore
         self.embedder = embedder
         self.retriever = retriever
+        self.rules_loader = rules_loader
         
         # Initialize OfferPilot for financing offers
         self.offer_pilot = OfferPilot(docstore, embedder, retriever)
         
-        # Load provider data
+        # Load provider data and rules
         self._load_provider_data()
+        self._load_carecredit_rules()
     
     def _load_provider_data(self):
         """Load healthcare provider directory"""
         try:
-            providers_path = Path("app/data/providers.json")
+            providers_path = Path("synchrony-demo-rules-repo/fixtures/providers.json")
             with open(providers_path, 'r') as f:
                 data = json.load(f)
                 self.providers = data["providers"]
-                self.specialties = data["specialties"]
-                self.procedure_mappings = data["procedure_mappings"]
+                self.specialties = data.get("specialties", {})
+                self.procedure_mappings = data.get("procedure_mappings", {})
             logger.info(f"Loaded {len(self.providers)} healthcare providers")
         except Exception as e:
             logger.error(f"Failed to load provider data: {e}")
             self.providers = []
             self.specialties = {}
             self.procedure_mappings = {}
+    
+    def _load_carecredit_rules(self):
+        """Load CareCredit rules from YAML"""
+        try:
+            if self.rules_loader:
+                self.carecredit_rules = self.rules_loader.get_rules('carecredit') or {}
+                logger.info("Loaded CareCredit rules from rules_loader")
+            else:
+                self.carecredit_rules = {}
+                logger.warning("No rules_loader provided - using defaults")
+        except Exception as e:
+            logger.error(f"Failed to load CareCredit rules: {e}")
+            self.carecredit_rules = {}
     
     def process_estimate(
         self,
@@ -107,7 +118,7 @@ class CareCredit:
         insurance: Optional[Dict[str, float]] = None
     ) -> CreditResponse:
         """
-        Main processing pipeline for treatment estimates
+        Main processing pipeline: treatment → providers → OOPP → financing
         
         Args:
             estimate_text: Medical/dental estimate text
@@ -115,12 +126,12 @@ class CareCredit:
             insurance: Insurance info with deductible_left and coinsurance
             
         Returns:
-            CreditResponse with explanation, providers, financing options
+            CreditResponse with counts + 12-mo explanation + next steps + metadata
         """
         try:
             logger.info("Processing CareCredit treatment estimate")
             
-            # Step 1: Parse estimate into line items
+            # Step 1: Parse estimate into line items (deterministic parser)
             parsed_items = self.estimate_parse_table(estimate_text)
             logger.info(f"Parsed {len(parsed_items)} line items from estimate")
             
@@ -131,52 +142,125 @@ class CareCredit:
             specialty = self._identify_specialty(parsed_items, estimate_text)
             logger.info(f"Identified specialty: {specialty}")
             
-            # Step 4: Search for providers
+            # Step 4: Provider shortlist (max 3) filtered by specialty/city
             providers = self.providers_search({"specialty": specialty, "location": location})
             
-            # Step 5: Get CareCredit financing offers
+            # Step 5: OOPP estimate using rules/carecredit.yml defaults
+            oopp_result = self.oopp_simulate(total_cost, None, insurance)
+            
+            # Step 6: Financing pairing - attach EP/DI options
             financing_offers = self._get_carecredit_offers(total_cost)
             
-            # Step 6: Calculate out-of-pocket costs
-            oopp_result = self.oopp_simulate(total_cost, financing_offers[0] if financing_offers else None, insurance)
+            # Step 7: Generate response with counts + 12-mo explanation + next steps
+            response_text = self._generate_response_text(parsed_items, providers, financing_offers, oopp_result, total_cost)
             
-            # Step 7: Get terms and citations
-            citations = self.terms_retrieve("CareCredit promotional financing")
+            # Step 8: Build UI cards for metadata
+            ui_cards = self._build_ui_cards(parsed_items, providers, financing_offers, total_cost)
             
-            # Step 8: Generate plain-language explanation
-            explanation = self._generate_explanation(parsed_items, providers, financing_offers, oopp_result)
-            
-            # Convert parsed items to LineItem models
-            line_items = [
-                LineItem(
-                    name=item.name,
-                    unit_cost=item.unit_cost,
-                    qty=item.qty,
-                    subtotal=item.unit_cost * item.qty,
-                    procedure_code=item.procedure_code
-                )
-                for item in parsed_items
-            ]
+            # Step 9: Always append carecredit_generic disclosure
+            disclosures = self._get_disclosures(financing_offers)
             
             return CreditResponse(
-                explanation=explanation,
-                line_items=line_items,
-                providers=providers,
-                financing=financing_offers,
-                oopp=oopp_result,
-                citations=citations
+                response=response_text,
+                metadata={
+                    "ui_cards": ui_cards,
+                    "disclosures": disclosures,
+                    "total_procedures": len(parsed_items),
+                    "total_cost": total_cost,
+                    "providers_found": len(providers),
+                    "financing_options": len(financing_offers),
+                    "oopp_estimate": oopp_result.estimated_total,
+                    "specialty": specialty
+                }
             )
             
         except Exception as e:
             logger.error(f"Error processing CareCredit estimate: {e}")
             return CreditResponse(
-                explanation=f"Error processing estimate: {str(e)}",
-                line_items=[],
-                providers=[],
-                financing=[],
-                oopp=OOPPResult(estimated_total=0.0, assumptions={}),
-                citations=[]
+                response=f"Error processing estimate: {str(e)}",
+                metadata={
+                    "ui_cards": [],
+                    "disclosures": ["carecredit_generic"],
+                    "error": str(e)
+                }
             )
+    
+    def process_query(self, query: str) -> Dict[str, Any]:
+        """
+        Main entry point for supervisor integration
+        
+        Args:
+            query: User query about healthcare financing
+            
+        Returns:
+            Dict with response, metadata, sources for supervisor
+        """
+        try:
+            # Extract location if mentioned
+            location = self._extract_location(query)
+            
+            # Extract insurance info if mentioned
+            insurance = self._extract_insurance(query)
+            
+            # Process the estimate
+            result = self.process_estimate(query, location, insurance)
+            
+            # Convert to supervisor-compatible format
+            return {
+                "response": result.response,
+                "confidence": 0.8,
+                "sources": [],
+                "metadata": result.metadata
+            }
+            
+        except Exception as e:
+            logger.error(f"CareCredit process_query error: {e}")
+            return {
+                "response": f"Error processing CareCredit query: {str(e)}",
+                "confidence": 0.2,
+                "sources": [],
+                "metadata": {"error": str(e)}
+            }
+    
+    def _extract_location(self, query: str) -> Optional[str]:
+        """Extract location from query text"""
+        import re
+        
+        # Look for city patterns
+        city_patterns = [
+            r"in ([A-Z][a-z]+ ?[A-Z]?[a-z]*)",  # "in New York", "in Chicago"
+            r"I'm in ([A-Z][a-z]+ ?[A-Z]?[a-z]*)",  # "I'm in New York"
+            r"([A-Z][a-z]+) area",  # "Chicago area"
+        ]
+        
+        for pattern in city_patterns:
+            match = re.search(pattern, query, re.IGNORECASE)
+            if match:
+                return match.group(1).title()
+        
+        return None
+    
+    def _extract_insurance(self, query: str) -> Optional[Dict[str, float]]:
+        """Extract insurance information from query text"""
+        import re
+        
+        insurance = {}
+        
+        # Look for deductible
+        deductible_match = re.search(r'\$?(\d+) deductible', query, re.IGNORECASE)
+        if deductible_match:
+            insurance["deductible_left"] = float(deductible_match.group(1))
+        
+        # Look for coinsurance
+        coinsurance_match = re.search(r'(\d+)% coinsurance', query, re.IGNORECASE)
+        if coinsurance_match:
+            insurance["coinsurance"] = float(coinsurance_match.group(1)) / 100
+        
+        # Look for "no insurance"
+        if re.search(r'no insurance|without insurance', query, re.IGNORECASE):
+            return None
+        
+        return insurance if insurance else None
     
     def estimate_parse_table(self, text: str) -> List[ParsedProcedure]:
         """
@@ -310,105 +394,122 @@ Focus on actual billable procedures, ignore totals and administrative text."""
     
     def providers_search(self, criteria: Dict[str, str]) -> List[Provider]:
         """
-        Search providers by specialty and location
+        Search providers by specialty and city (max 3 results)
         
         Args:
-            criteria: Dict with specialty and location
+            criteria: Dict with specialty and location/city
             
         Returns:
-            List of matching providers
+            List of matching providers (max 3)
         """
         specialty = criteria.get("specialty", "").lower()
-        location = criteria.get("location", "").lower()
+        city = criteria.get("location", "").lower()
         
         matching_providers = []
+        max_results = self.carecredit_rules.get("provider_search", {}).get("max_results", 3)
         
         for provider in self.providers:
             # Check specialty match
-            if specialty and provider["specialty"] != specialty:
+            if specialty and provider.get("specialty", "").lower() != specialty:
                 continue
             
-            # Check location match (if specified)
-            if location and location not in provider["location"].lower():
+            # Check city match (if specified) 
+            if city and city not in provider.get("city", "").lower():
                 continue
             
-            # Only include CareCredit accepting providers
-            if provider.get("accepts_carecredit", False):
+            # Only include enrolled/CareCredit accepting providers
+            if provider.get("accepts_carecredit", False) or provider.get("enrolled", False):
                 matching_providers.append(Provider(
                     name=provider["name"],
-                    address=provider["address"],
-                    phone=provider["phone"],
-                    next_appt_days=provider["next_appt_days"]
+                    address=provider.get("address", f"{provider.get('city', 'Unknown')}"),
+                    phone=provider.get("phone", "Contact provider"),
+                    next_appt_days=provider.get("next_appt_days", 7)
                 ))
         
-        # Sort by appointment availability
+        # Sort by appointment availability (sooner appointments first)
         matching_providers.sort(key=lambda p: p.next_appt_days)
         
-        return matching_providers[:5]  # Return top 5
+        return matching_providers[:max_results]  # Return max 3
     
     def _get_carecredit_offers(self, total_cost: float) -> List[FinancingOption]:
         """
-        Get CareCredit financing offers for healthcare merchants
+        Get CareCredit financing offers with EP/DI options
         
         Args:
             total_cost: Total treatment cost
             
         Returns:
-            List of financing options
+            List of financing options (EP + DI)
         """
         financing_options = []
         
         try:
-            # Look for healthcare-specific offers using OfferPilot
-            healthcare_merchants = ["CareCredit", "Healthcare Financing", "Medical Credit"]
+            # Get financing rules from carecredit.yml
+            financing_rules = self.carecredit_rules.get("financing_options", {})
+            ep_rules = financing_rules.get("equal_payment", {})
+            di_rules = financing_rules.get("deferred_interest", {})
             
-            for merchant in healthcare_merchants:
-                offers = self.offer_pilot.offers_lookup(merchant, total_cost)
-                
-                for offer in offers:
-                    # Calculate payment details
-                    payment_sim = self.offer_pilot.payments_simulate(
-                        total_cost, offer["months"], offer["apr"]
-                    )
+            # Generate Equal Payment (EP) options
+            ep_terms = ep_rules.get("terms", [12, 24, 36, 48, 60])
+            ep_min = ep_rules.get("min_amount", 200.0)
+            ep_max = ep_rules.get("max_amount", 25000.0)
+            ep_promo_apr = ep_rules.get("apr_range", {}).get("promotional", 0.0)
+            
+            if ep_min <= total_cost <= ep_max:
+                for months in ep_terms:
+                    if months <= 24:  # Promotional 0% APR for shorter terms
+                        apr = ep_promo_apr
+                        offer_id = f"EP_{months}_0"
+                    else:  # Standard APR for longer terms  
+                        apr = 14.90  # Use standard rate
+                        offer_id = f"EP_{months}_1490"
+                    
+                    # Calculate payment
+                    if apr == 0:
+                        monthly = total_cost / months
+                        total_with_interest = total_cost
+                    else:
+                        monthly_rate = apr / 100 / 12
+                        monthly = (total_cost * monthly_rate * (1 + monthly_rate) ** months) / ((1 + monthly_rate) ** months - 1)
+                        total_with_interest = monthly * months
                     
                     financing_options.append(FinancingOption(
-                        offer_id=offer["id"],
-                        months=offer["months"],
-                        apr=offer["apr"],
-                        monthly=payment_sim["monthly"],
-                        total_cost=payment_sim["total_cost"]
+                        offer_id=offer_id,
+                        months=months,
+                        apr=apr,
+                        monthly=round(monthly, 2),
+                        total_cost=round(total_with_interest, 2)
                     ))
             
-            # Add default CareCredit options if none found
-            if not financing_options:
-                default_offers = [
-                    {"id": "CARECREDIT_12_0", "months": 12, "apr": 0.0},
-                    {"id": "CARECREDIT_24_0", "months": 24, "apr": 0.0},
-                    {"id": "CARECREDIT_60_1499", "months": 60, "apr": 14.99},
-                ]
-                
-                for offer in default_offers:
-                    # Only show 0% APR for qualifying amounts
-                    if offer["apr"] == 0 and total_cost < 200:
-                        continue
-                        
-                    payment_sim = self.offer_pilot.payments_simulate(
-                        total_cost, offer["months"], offer["apr"]
-                    )
+            # Generate Deferred Interest (DI) options  
+            di_terms = di_rules.get("terms", [6, 12, 18, 24])
+            di_min = di_rules.get("min_amount", 200.0)
+            di_max = di_rules.get("max_amount", 25000.0)
+            di_standard_apr = di_rules.get("standard_apr", 26.99)
+            
+            if di_min <= total_cost <= di_max:
+                for months in di_terms:
+                    offer_id = f"DI_{months}_0"
                     
+                    # DI: 0% during promo period, standard APR if not paid off
                     financing_options.append(FinancingOption(
-                        offer_id=offer["id"],
-                        months=offer["months"],
-                        apr=offer["apr"],
-                        monthly=payment_sim["monthly"],
-                        total_cost=payment_sim["total_cost"]
+                        offer_id=offer_id,
+                        months=months,
+                        apr=0.0,  # Promotional rate during term
+                        monthly=round(total_cost / months, 2),  # Minimum payment
+                        total_cost=total_cost  # If paid during promo period
                     ))
             
-            # Sort by APR (0% first, then ascending)
-            financing_options.sort(key=lambda x: (x.apr > 0, x.apr))
+            # Sort by APR, then by months (0% APR first, shorter terms first)
+            financing_options.sort(key=lambda x: (x.apr > 0, x.apr, x.months))
             
         except Exception as e:
             logger.error(f"Error getting CareCredit offers: {e}")
+            # Fallback default offers
+            financing_options = [
+                FinancingOption(offer_id="EP_12_0", months=12, apr=0.0, monthly=round(total_cost/12, 2), total_cost=total_cost),
+                FinancingOption(offer_id="DI_12_0", months=12, apr=0.0, monthly=round(total_cost/12, 2), total_cost=total_cost)
+            ]
         
         return financing_options
     
@@ -419,7 +520,7 @@ Focus on actual billable procedures, ignore totals and administrative text."""
         insurance: Optional[Dict[str, float]]
     ) -> OOPPResult:
         """
-        Simulate out-of-pocket costs with insurance and financing
+        Simulate out-of-pocket costs using rules/carecredit.yml defaults
         
         Args:
             total: Total procedure cost
@@ -436,29 +537,38 @@ Focus on actual billable procedures, ignore totals and administrative text."""
             estimated_total = total
             assumptions["original_total"] = total
             
-            # Apply insurance if provided
+            # Get defaults from rules
+            oopp_defaults = self.carecredit_rules.get("oopp_defaults", {})
+            deductible_defaults = oopp_defaults.get("deductible", {})
+            coinsurance_defaults = oopp_defaults.get("coinsurance", {})
+            
+            # Apply insurance if provided, otherwise use defaults
             if insurance:
-                deductible_left = insurance.get("deductible_left", 0)
-                coinsurance = insurance.get("coinsurance", 0.2)  # Default 20%
-                
-                # Apply deductible
-                after_deductible = max(0, total - deductible_left)
-                deductible_used = min(total, deductible_left)
-                
-                # Apply coinsurance to remaining amount
-                insurance_pays = after_deductible * (1 - coinsurance)
-                patient_coinsurance = after_deductible * coinsurance
-                
-                estimated_total = deductible_used + patient_coinsurance
-                
-                assumptions.update({
-                    "deductible_applied": deductible_used,
-                    "coinsurance_rate": coinsurance,
-                    "insurance_payment": insurance_pays,
-                    "patient_portion": estimated_total
-                })
+                deductible_left = insurance.get("deductible_left", deductible_defaults.get("individual", 1500.0))
+                coinsurance = insurance.get("coinsurance", coinsurance_defaults.get("in_network", 0.2))
             else:
-                assumptions["insurance_status"] = "No insurance information provided"
+                # Use rules defaults
+                deductible_left = deductible_defaults.get("individual", 1500.0)
+                coinsurance = coinsurance_defaults.get("in_network", 0.2)
+                assumptions["insurance_status"] = f"Using default deductible ${deductible_left} and {coinsurance*100}% coinsurance"
+            
+            # Apply deductible
+            after_deductible = max(0, total - deductible_left)
+            deductible_used = min(total, deductible_left)
+            
+            # Apply coinsurance to remaining amount
+            insurance_pays = after_deductible * (1 - coinsurance)
+            patient_coinsurance = after_deductible * coinsurance
+            
+            estimated_total = deductible_used + patient_coinsurance
+            
+            assumptions.update({
+                "deductible_applied": deductible_used,
+                "coinsurance_rate": coinsurance,
+                "insurance_payment": insurance_pays,
+                "patient_portion": estimated_total,
+                "caveat": self.carecredit_rules.get("oop_estimator", {}).get("caveat", "Illustrative only")
+            })
             
             # Factor in financing if selected
             if promo:
@@ -579,71 +689,163 @@ Focus on actual billable procedures, ignore totals and administrative text."""
         # Default to dental (most common CareCredit usage)
         return "dental"
     
-    def _generate_explanation(
+    def _generate_response_text(
         self,
         procedures: List[ParsedProcedure],
         providers: List[Provider],
         financing: List[FinancingOption],
-        oopp: OOPPResult
+        oopp: OOPPResult,
+        total_cost: float
     ) -> str:
         """
-        Generate plain-language explanation of treatment options
+        Generate response: counts + 12-mo explanation + next steps
         
         Args:
             procedures: Parsed procedures
             providers: Available providers
             financing: Financing options
             oopp: Out-of-pocket projection
+            total_cost: Total treatment cost
             
         Returns:
-            Plain-language explanation
+            Response with counts, 12-mo explanation, and next steps
         """
-        explanation_parts = []
+        response_parts = []
         
-        # Treatment summary
-        total_procedures = len(procedures)
-        total_cost = sum(proc.unit_cost * proc.qty for proc in procedures)
-        
-        explanation_parts.append(
-            f"Your treatment estimate includes {total_procedures} procedure{'s' if total_procedures != 1 else ''} "
-            f"with a total cost of ${total_cost:,.2f}."
+        # Counts summary
+        response_parts.append(
+            f"**Treatment Summary:** {len(procedures)} procedure{'s' if len(procedures) != 1 else ''} "
+            f"totaling ${total_cost:,.2f}"
         )
         
-        # Insurance impact
-        if "insurance_payment" in oopp.assumptions:
-            insurance_saves = oopp.assumptions["insurance_payment"]
-            explanation_parts.append(
-                f"With your insurance, you'll be responsible for approximately ${oopp.estimated_total:,.2f} "
-                f"out-of-pocket (insurance covers ${insurance_saves:,.2f})."
-            )
-        else:
-            explanation_parts.append(
-                f"Without insurance information, your estimated out-of-pocket cost is ${oopp.estimated_total:,.2f}."
-            )
+        # OOPP estimate
+        response_parts.append(
+            f"**Out-of-Pocket:** ${oopp.estimated_total:,.2f} "
+            f"({oopp.assumptions.get('caveat', 'estimate only')})"
+        )
         
-        # Financing options
+        # 12-month financing explanation
         if financing:
-            best_offer = financing[0]  # First is best (sorted by APR)
-            if best_offer.apr == 0:
-                explanation_parts.append(
-                    f"Great news! You may qualify for 0% APR financing with CareCredit, "
-                    f"allowing you to pay just ${best_offer.monthly:.2f} per month for {best_offer.months} months."
+            best_12mo = next((f for f in financing if f.months == 12), financing[0])
+            if best_12mo.apr == 0:
+                response_parts.append(
+                    f"**12-Month Financing:** ${best_12mo.monthly:.2f}/month with 0% APR promotional financing"
                 )
             else:
-                explanation_parts.append(
-                    f"CareCredit financing is available starting at {best_offer.apr}% APR, "
-                    f"with payments as low as ${best_offer.monthly:.2f} per month."
+                response_parts.append(
+                    f"**12-Month Financing:** ${best_12mo.monthly:.2f}/month at {best_12mo.apr}% APR"
                 )
         
         # Provider availability
         if providers:
-            next_available = min(p.next_appt_days for p in providers)
-            explanation_parts.append(
-                f"We found {len(providers)} CareCredit-accepting providers in your area, "
-                f"with appointments available as soon as {next_available} days."
+            next_appt = min(p.next_appt_days for p in providers)
+            response_parts.append(
+                f"**Providers:** {len(providers)} CareCredit providers available, "
+                f"next appointment in {next_appt} days"
             )
         
-        return " ".join(explanation_parts)
+        # Next steps
+        next_steps = []
+        if providers:
+            next_steps.append("1. Contact a provider to schedule consultation")
+        next_steps.append("2. Apply for CareCredit at carecredit.com")
+        next_steps.append("3. Bring your CareCredit card to your appointment")
+        
+        if next_steps:
+            response_parts.append(f"**Next Steps:** {' | '.join(next_steps)}")
+        
+        return "\n".join(response_parts)
+    
+    def _build_ui_cards(
+        self,
+        procedures: List[ParsedProcedure],
+        providers: List[Provider],
+        financing: List[FinancingOption],
+        total_cost: float
+    ) -> List[Dict[str, Any]]:
+        """
+        Build UI cards: estimate, providers, financing
+        
+        Returns:
+            List of UI cards for metadata
+        """
+        ui_cards = []
+        
+        # Estimate card
+        estimate_items = [
+            {
+                "name": proc.name,
+                "code": proc.procedure_code or "",
+                "unit_cost": proc.unit_cost,
+                "qty": proc.qty,
+                "subtotal": proc.unit_cost * proc.qty
+            }
+            for proc in procedures
+        ]
+        
+        ui_cards.append({
+            "type": "estimate",
+            "items": estimate_items,
+            "total": total_cost
+        })
+        
+        # Providers card
+        provider_items = [
+            {
+                "name": prov.name,
+                "address": prov.address,
+                "phone": prov.phone,
+                "next_appt_days": prov.next_appt_days
+            }
+            for prov in providers
+        ]
+        
+        ui_cards.append({
+            "type": "providers",
+            "items": provider_items
+        })
+        
+        # Financing card
+        financing_items = [
+            {
+                "offer_id": fin.offer_id,
+                "months": fin.months,
+                "apr": fin.apr,
+                "monthly_payment": fin.monthly,
+                "total_cost": fin.total_cost,
+                "offer_type": "EP" if fin.offer_id.startswith("EP_") else "DI"
+            }
+            for fin in financing
+        ]
+        
+        ui_cards.append({
+            "type": "financing",
+            "options": financing_items
+        })
+        
+        return ui_cards
+    
+    def _get_disclosures(self, financing: List[FinancingOption]) -> List[str]:
+        """
+        Get disclosure list - always append carecredit_generic
+        
+        Args:
+            financing: Financing options
+            
+        Returns:
+            List of disclosure IDs
+        """
+        disclosures = ["carecredit_generic"]  # Always include
+        
+        # Add equal_payment_generic if EP options present
+        if any(f.offer_id.startswith("EP_") for f in financing):
+            disclosures.append("equal_payment_generic")
+        
+        # Add deferred_interest_generic if DI options present  
+        if any(f.offer_id.startswith("DI_") for f in financing):
+            disclosures.append("deferred_interest_generic")
+        
+        return disclosures
 
 # Test cases for CareCredit scenarios  
 def test_carecredit():

@@ -1,0 +1,10 @@
+{
+  "input": "I was charged twice for \u20b912,499 at Amazon on Dec 15",
+  "expect_contains": [
+    "Duplicate charge",
+    "eligibility window",
+    "evidence",
+    "status",
+    "next update"
+  ]
+}

@@ -1,0 +1,10 @@
+Clinic: SmileCraft Dental
+City: Bengaluru
+
+Items:
+- CBCT Scan (D0367): ₹3,500
+- Surgical Placement of Implant (D6010): ₹48,000
+- Abutment (D6056): ₹12,000
+- Crown (D6065): ₹22,500
+
+Notes: Self-pay. Wants 12-month 0% if available.

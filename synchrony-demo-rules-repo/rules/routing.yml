@@ -1,0 +1,25 @@
+persona_rules:
+  strong_signals:
+    partner: ["co-branded", "POS integration", "webhooks", "SDK", "merchant settlement", "signage", "sandbox", "developer", "API keys"]
+    consumer: ["my card", "my statement", "charged", "late fee", "minimum due", "hardship", "CareCredit", "treatment", "provider"]
+  weighted_keywords:
+    partner:
+      - ["co-branded", 0.5]
+      - ["widget", 0.4]
+      - ["webhook", 0.4]
+      - ["campaign", 0.3]
+    consumer:
+      - ["charged", 0.5]
+      - ["refund", 0.4]
+      - ["APR", 0.3]
+      - ["0% APR", 0.3]
+      - ["treatment", 0.4]
+platform_rules:
+  carecredit: ["treatment", "provider", "dental", "derm", "clinic", "OOPP", "CareCredit"]
+  digital: ["e-com", "transaction", "chargeback", "card", "merchant", "product"]
+  home_auto: ["appliance", "furniture", "contractor", "tires", "home", "auto"]
+  diversified_value: ["value", "discount", "mass market"]
+  lifestyle: ["fashion", "lifestyle", "home decor"]
+decision_thresholds:
+  persona_high: 0.6
+  persona_low: 0.4

@@ -35,36 +35,52 @@ class PaymentScheduleEntry(BaseModel):
     principal: float
     balance: float
 
-class HardshipPlan(BaseModel):
-    type: str
-    params: dict
-    payment_curve: List[PaymentScheduleEntry]
-    npv: float
-    risk_score: float
-    why: str
-    disclosures: List[str]
-
-class Citation(BaseModel):
-    source: str
-    snippet: str
+class PaymentPlan(BaseModel):
+    plan_id: str
+    name: str
+    description: str
+    monthly_payment: float
+    duration_months: int
+    total_paid: float
+    payment_schedule: List[PaymentScheduleEntry]
+    rationale: str
+    score: float
+    affordability_score: float
+    bank_npv_score: float
+    cure_probability_score: float
 
 class CollectionsResponse(BaseModel):
-    plans: List[HardshipPlan]
-    citations: List[Citation]
+    response: str  # top 2-3 options + why
+    metadata: Dict[str, Any]  # ui_cards, disclosures, handoffs
 
 class CollectionsAdvisor:
     """
     Collections & Hardship Advisor for proposing compliant hardship plans
     """
     
-    def __init__(self, docstore=None, embedder=None, retriever=None):
-        """Initialize CollectionsAdvisor with RAG components for terms retrieval"""
+    def __init__(self, docstore=None, embedder=None, retriever=None, rules_loader=None):
+        """Initialize CollectionsAdvisor with RAG components and rules loader"""
         self.docstore = docstore
         self.embedder = embedder
         self.retriever = retriever
+        self.rules_loader = rules_loader
         
-        # Load hardship policies
+        # Load collections rules and policies
+        self._load_collections_rules()
         self._load_hardship_policies()
+    
+    def _load_collections_rules(self):
+        """Load collections rules from YAML"""
+        try:
+            if self.rules_loader:
+                self.collections_rules = self.rules_loader.get_rules('collections') or {}
+                logger.info("Loaded collections rules from rules_loader")
+            else:
+                self.collections_rules = {}
+                logger.warning("No rules_loader provided - using defaults")
+        except Exception as e:
+            logger.error(f"Failed to load collections rules: {e}")
+            self.collections_rules = {}
     
     def _load_hardship_policies(self):
         """Load hardship policies from JSON file"""
@@ -83,585 +99,416 @@ class CollectionsAdvisor:
     
     def process_hardship_request(self, customer_state: CustomerState) -> CollectionsResponse:
         """
-        Main processing pipeline for hardship requests
+        Main processing pipeline: humane, policy-aware plans
         
         Args:
             customer_state: Customer's financial state and account information
             
         Returns:
-            CollectionsResponse with recommended hardship plans and citations
+            CollectionsResponse with top 2-3 options + rationale, UI cards, disclosures
         """
         try:
             logger.info(f"Processing hardship request for {customer_state.bucket} bucket, balance ${customer_state.balance:.2f}")
             
-            # Step 1: Load policy rules
-            policy_rules = self.policy_rules_load()
+            # Step 1: Get plan menu from rules/collections.yml
+            available_plans = self._get_plan_menu(customer_state)
             
-            # Step 2: Generate candidate plans
-            candidates = self._generate_candidate_plans(customer_state, policy_rules)
-            logger.info(f"Generated {len(candidates)} candidate plans")
+            # Step 2: Simulate payment schedules with demo APR
+            simulated_plans = self._simulate_payment_plans(available_plans, customer_state)
             
-            # Step 3: Simulate each plan
-            simulated_plans = []
-            for candidate in candidates:
-                simulation = self.plan_simulate(
-                    balance=customer_state.balance,
-                    apr=customer_state.apr,
-                    months=candidate.get("months", 12),
-                    kind=candidate["type"],
-                    params=candidate["params"]
-                )
-                
-                # Step 4: Score the plan
-                score_components = self._score_plan(candidate, simulation, customer_state, policy_rules)
-                
-                # Step 5: Generate rationale with Gemini
-                rationale = self._generate_rationale(candidate, customer_state, policy_rules)
-                
-                # Step 6: Get mandatory disclosures
-                disclosures = self._get_mandatory_disclosures(candidate["type"], policy_rules)
-                
-                simulated_plans.append({
-                    "candidate": candidate,
-                    "simulation": simulation,
-                    "score": score_components["total_score"],
-                    "rationale": rationale,
-                    "disclosures": disclosures
-                })
+            # Step 3: Rank plans with weights (affordability, bank NPV, cure probability)
+            ranked_plans = self._rank_payment_plans(simulated_plans, customer_state)
             
-            # Step 7: Sort by score and take top 3
-            simulated_plans.sort(key=lambda x: x["score"], reverse=True)
-            top_plans = simulated_plans[:3]
+            # Step 4: Select top 2-3 options
+            top_plans = ranked_plans[:3]
             
-            # Step 8: Get policy citations
-            citations = self._get_policy_citations()
+            # Step 5: Generate response with rationale
+            response_text = self._generate_response_text(top_plans, customer_state)
             
-            # Step 9: Format response
-            formatted_plans = []
-            for plan_data in top_plans:
-                candidate = plan_data["candidate"]
-                simulation = plan_data["simulation"]
-                
-                formatted_plans.append(HardshipPlan(
-                    type=candidate["type"],
-                    params=candidate["params"],
-                    payment_curve=[
-                        PaymentScheduleEntry(
-                            month=entry["month"],
-                            payment=entry["payment"],
-                            interest=entry["interest"],
-                            principal=entry["principal"],
-                            balance=entry["balance"]
-                        ) for entry in simulation["schedule"]
-                    ],
-                    npv=simulation["npv"],
-                    risk_score=simulation["chargeoff_risk"],
-                    why=plan_data["rationale"],
-                    disclosures=plan_data["disclosures"]
-                ))
+            # Step 6: Build UI cards for metadata
+            ui_cards = self._build_plan_ui_cards(top_plans)
+            
+            # Step 7: Include mandatory disclosures and handoffs
+            disclosures = ["collections_generic"]
+            handoffs = ["contracts"]  # for terms clarifications
             
             return CollectionsResponse(
-                plans=formatted_plans,
-                citations=citations
+                response=response_text,
+                metadata={
+                    "ui_cards": ui_cards,
+                    "disclosures": disclosures,
+                    "handoffs": handoffs,
+                    "total_plans_evaluated": len(simulated_plans),
+                    "customer_bucket": customer_state.bucket,
+                    "balance": customer_state.balance
+                }
             )
             
         except Exception as e:
             logger.error(f"Error processing hardship request: {e}")
-            return CollectionsResponse(plans=[], citations=[])
+            return CollectionsResponse(
+                response=f"Error processing hardship request: {str(e)}",
+                metadata={
+                    "ui_cards": [],
+                    "disclosures": ["collections_generic"],
+                    "handoffs": [],
+                    "error": str(e)
+                }
+            )
     
-    def _generate_candidate_plans(self, customer_state: CustomerState, policy_rules: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Generate candidate hardship plans based on policy rules and customer state"""
-        candidates = []
-        allowed_actions = policy_rules.get("allowed_actions", {})
-        
-        # Deferral plans
-        if (allowed_actions.get("deferral", {}).get("enabled") and 
-            customer_state.bucket in allowed_actions["deferral"]["eligible_buckets"]):
-            
-            max_months = allowed_actions["deferral"]["max_months"]
-            for months in [2, 3, 6]:
-                if months <= max_months:
-                    candidates.append({
-                        "type": "deferral",
-                        "months": months,
-                        "params": {"deferral_months": months}
-                    })
-        
-        # Re-aging plans
-        if (allowed_actions.get("re_aging", {}).get("enabled") and 
-            customer_state.bucket in allowed_actions["re_aging"]["eligible_buckets"]):
-            
-            candidates.append({
-                "type": "re_aging",
-                "months": 12,
-                "params": {"bring_current": True, "payment_history_required": 3}
-            })
-        
-        # Settlement plans
-        if (allowed_actions.get("settlement", {}).get("enabled") and 
-            customer_state.bucket in allowed_actions["settlement"]["eligible_buckets"]):
-            
-            min_pct = allowed_actions["settlement"]["min_settlement_pct"]
-            max_pct = allowed_actions["settlement"]["max_settlement_pct"]
-            
-            for pct in [min_pct, 0.60, 0.75, max_pct]:
-                candidates.append({
-                    "type": "settlement",
-                    "months": 1,
-                    "params": {"settlement_percentage": pct, "lump_sum": True}
-                })
-                
-                # Split settlement options
-                if not allowed_actions["settlement"]["requires_lump_sum"]:
-                    candidates.append({
-                        "type": "settlement",
-                        "months": 6,
-                        "params": {"settlement_percentage": pct, "split_months": 6}
-                    })
-        
-        # Interest reduction plans
-        if (allowed_actions.get("interest_reduction", {}).get("enabled") and 
-            customer_state.bucket in allowed_actions["interest_reduction"]["eligible_buckets"]):
-            
-            max_cycles = allowed_actions["interest_reduction"]["max_cycles"]
-            min_reduction = allowed_actions["interest_reduction"]["min_reduction_pct"]
-            
-            for cycles in [6, 12]:
-                if cycles <= max_cycles:
-                    candidates.append({
-                        "type": "interest_reduction",
-                        "months": cycles,
-                        "params": {"reduction_percentage": min_reduction, "cycles": cycles}
-                    })
-        
-        # Payment plan options
-        if (allowed_actions.get("payment_plan", {}).get("enabled") and 
-            customer_state.bucket in allowed_actions["payment_plan"]["eligible_buckets"]):
-            
-            min_months = allowed_actions["payment_plan"]["min_months"]
-            max_months = allowed_actions["payment_plan"]["max_months"]
-            
-            for months in [12, 24, 36]:
-                if min_months <= months <= max_months:
-                    candidates.append({
-                        "type": "payment_plan",
-                        "months": months,
-                        "params": {"term_months": months}
-                    })
-        
-        return candidates
-    
-    def plan_simulate(self, balance: float, apr: float, months: int, kind: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    def _get_plan_menu(self, customer_state: CustomerState) -> List[Dict[str, Any]]:
         """
-        Simulate payment plan and calculate NPV and chargeoff risk
+        Get available plans from rules/collections.yml filtered by eligibility
         
         Args:
-            balance: Current balance
-            apr: Annual percentage rate
-            months: Plan duration in months
-            kind: Plan type
-            params: Plan-specific parameters
+            customer_state: Customer financial information
             
         Returns:
-            Simulation results with schedule, NPV, and risk
+            List of eligible payment plans
         """
-        monthly_rate = apr / 100 / 12
-        schedule = []
+        available_plans = []
+        rules_plans = self.collections_rules.get("plans", {})
+        
+        for plan_id, plan_config in rules_plans.items():
+            # Check eligibility
+            eligibility = plan_config.get("eligibility", {})
+            min_balance = eligibility.get("min_balance", 0)
+            max_balance = eligibility.get("max_balance", float('inf'))
+            
+            if min_balance <= customer_state.balance <= max_balance:
+                available_plans.append({
+                    "plan_id": plan_id,
+                    "config": plan_config
+                })
+                
+        logger.info(f"Found {len(available_plans)} eligible plans for balance ${customer_state.balance}")
+        return available_plans
+    
+    def _simulate_payment_plans(self, available_plans: List[Dict[str, Any]], customer_state: CustomerState) -> List[PaymentPlan]:
+        """
+        Simulate payment schedules with demo APR and compute totals
+        
+        Args:
+            available_plans: List of eligible plans
+            customer_state: Customer financial information
+            
+        Returns:
+            List of simulated payment plans
+        """
+        simulated_plans = []
+        sim_params = self.collections_rules.get("simulation_params", {})
+        demo_apr = sim_params.get("demo_apr", 0.2399)  # 23.99%
+        
+        for plan_data in available_plans:
+            plan_id = plan_data["plan_id"]
+            config = plan_data["config"]
+            
+            # Calculate payment schedule based on plan type
+            payment_schedule = self._calculate_payment_schedule(
+                balance=customer_state.balance,
+                apr=demo_apr,
+                plan_config=config
+            )
+            
+            # Calculate totals
+            total_paid = sum(entry.payment for entry in payment_schedule)
+            avg_monthly = total_paid / len(payment_schedule) if payment_schedule else 0
+            
+            plan = PaymentPlan(
+                plan_id=plan_id,
+                name=config.get("name", plan_id.replace("_", " ").title()),
+                description=config.get("description", ""),
+                monthly_payment=avg_monthly,
+                duration_months=config.get("duration_months", 12),
+                total_paid=total_paid,
+                payment_schedule=payment_schedule,
+                rationale="",  # Will be filled in ranking
+                score=0.0,     # Will be calculated in ranking
+                affordability_score=0.0,
+                bank_npv_score=0.0,
+                cure_probability_score=0.0
+            )
+            
+            simulated_plans.append(plan)
+        
+        logger.info(f"Simulated {len(simulated_plans)} payment plans")
+        return simulated_plans
+    
+    def _calculate_payment_schedule(self, balance: float, apr: float, plan_config: Dict[str, Any]) -> List[PaymentScheduleEntry]:
+        """
+        Calculate payment schedule based on plan type
+        
+        Args:
+            balance: Outstanding balance
+            apr: Annual percentage rate
+            plan_config: Plan configuration from rules
+            
+        Returns:
+            List of payment schedule entries
+        """
+        payment_schedule = []
+        monthly_rate = apr / 12
+        duration_months = plan_config.get("duration_months", 12)
+        payment_type = plan_config.get("payment_type", "fixed")
+        min_payment_percent = plan_config.get("min_payment_percent", 0.025)
+        
         current_balance = balance
-        total_payments = 0
         
-        if kind == "deferral":
-            deferral_months = params.get("deferral_months", 3)
-            
-            # Deferral period - interest only accrues
-            for month in range(1, deferral_months + 1):
+        for month in range(1, duration_months + 1):
+            if payment_type == "interest_only":
+                # Interest-only payments
                 interest = current_balance * monthly_rate
-                current_balance += interest
-                schedule.append({
-                    "month": month,
-                    "payment": 0.0,
-                    "interest": interest,
-                    "principal": 0.0,
-                    "balance": current_balance
-                })
-            
-            # Resume normal payments after deferral
-            if current_balance > 0:
-                remaining_months = 24  # Assume 24 month payoff after deferral
-                monthly_payment = self._calculate_monthly_payment(current_balance, apr, remaining_months)
+                principal = 0
+                payment = interest
                 
-                for month in range(deferral_months + 1, deferral_months + remaining_months + 1):
-                    interest = current_balance * monthly_rate
-                    principal = monthly_payment - interest
-                    current_balance = max(0, current_balance - principal)
-                    total_payments += monthly_payment
-                    
-                    schedule.append({
-                        "month": month,
-                        "payment": monthly_payment,
-                        "interest": interest,
-                        "principal": principal,
-                        "balance": current_balance
-                    })
-                    
-                    if current_balance <= 0:
-                        break
-        
-        elif kind == "settlement":
-            settlement_pct = params.get("settlement_percentage", 0.60)
-            settlement_amount = balance * settlement_pct
-            split_months = params.get("split_months", 1)
-            
-            monthly_settlement = settlement_amount / split_months
-            
-            for month in range(1, split_months + 1):
-                schedule.append({
-                    "month": month,
-                    "payment": monthly_settlement,
-                    "interest": 0.0,
-                    "principal": monthly_settlement,
-                    "balance": max(0, settlement_amount - (monthly_settlement * month))
-                })
-                total_payments += monthly_settlement
-        
-        elif kind == "interest_reduction":
-            cycles = params.get("cycles", 12)
-            reduction_pct = params.get("reduction_percentage", 0.50)
-            reduced_apr = apr * (1 - reduction_pct)
-            reduced_monthly_rate = reduced_apr / 100 / 12
-            
-            monthly_payment = self._calculate_monthly_payment(balance, reduced_apr, cycles)
-            
-            for month in range(1, cycles + 1):
-                interest = current_balance * reduced_monthly_rate
-                principal = monthly_payment - interest
-                current_balance = max(0, current_balance - principal)
-                total_payments += monthly_payment
-                
-                schedule.append({
-                    "month": month,
-                    "payment": monthly_payment,
-                    "interest": interest,
-                    "principal": principal,
-                    "balance": current_balance
-                })
-                
-                if current_balance <= 0:
-                    break
-        
-        elif kind == "payment_plan":
-            term_months = params.get("term_months", 24)
-            monthly_payment = self._calculate_monthly_payment(balance, apr, term_months)
-            
-            for month in range(1, term_months + 1):
+            elif payment_type == "deferred":
+                # Deferred payments - only interest accrues
                 interest = current_balance * monthly_rate
-                principal = monthly_payment - interest
-                current_balance = max(0, current_balance - principal)
-                total_payments += monthly_payment
+                principal = 0
+                payment = 0
+                current_balance += interest  # Interest compounds
                 
-                schedule.append({
-                    "month": month,
-                    "payment": monthly_payment,
-                    "interest": interest,
-                    "principal": principal,
-                    "balance": current_balance
-                })
-                
-                if current_balance <= 0:
-                    break
-        
-        else:  # re_aging - bring current then normal payments
-            monthly_payment = self._calculate_monthly_payment(balance, apr, 24)
-            
-            for month in range(1, 25):
+            elif payment_type == "reduced":
+                # Reduced payments (minimum percent of balance)
+                payment = max(current_balance * min_payment_percent, 25.0)  # Min $25
                 interest = current_balance * monthly_rate
-                principal = monthly_payment - interest
-                current_balance = max(0, current_balance - principal)
-                total_payments += monthly_payment
+                principal = max(0, payment - interest)
                 
-                schedule.append({
-                    "month": month,
-                    "payment": monthly_payment,
-                    "interest": interest,
-                    "principal": principal,
-                    "balance": current_balance
-                })
+            elif payment_type == "fixed":
+                # Fixed payment plan to pay off balance
+                if month == 1:
+                    # Calculate fixed payment using amortization formula
+                    if monthly_rate > 0:
+                        fixed_payment = (balance * monthly_rate * (1 + monthly_rate) ** duration_months) / ((1 + monthly_rate) ** duration_months - 1)
+                    else:
+                        fixed_payment = balance / duration_months
                 
-                if current_balance <= 0:
-                    break
+                payment = fixed_payment
+                interest = current_balance * monthly_rate
+                principal = payment - interest
+            
+            else:
+                # Default to minimum payment
+                payment = current_balance * min_payment_percent
+                interest = current_balance * monthly_rate
+                principal = max(0, payment - interest)
+            
+            # Update balance
+            current_balance = max(0, current_balance - principal)
+            
+            payment_schedule.append(PaymentScheduleEntry(
+                month=month,
+                payment=round(payment, 2),
+                interest=round(interest, 2),
+                principal=round(principal, 2),
+                balance=round(current_balance, 2)
+            ))
+            
+            # Break if balance is paid off
+            if current_balance <= 0:
+                break
         
-        # Calculate NPV (simple discount at 10% annually)
-        discount_rate = 0.10 / 12  # Monthly discount rate
-        npv = sum(payment["payment"] / ((1 + discount_rate) ** payment["month"]) 
-                 for payment in schedule)
-        
-        # Calculate chargeoff risk based on plan type and customer state
-        chargeoff_risk = self._calculate_chargeoff_risk(kind, params, balance, apr)
-        
-        return {
-            "schedule": schedule,
-            "npv": npv,
-            "chargeoff_risk": chargeoff_risk,
-            "total_payments": total_payments
-        }
+        return payment_schedule
     
-    def _calculate_monthly_payment(self, balance: float, apr: float, months: int) -> float:
-        """Calculate monthly payment for standard amortization"""
-        if apr == 0:
-            return balance / months
+    def _rank_payment_plans(self, plans: List[PaymentPlan], customer_state: CustomerState) -> List[PaymentPlan]:
+        """
+        Rank plans using weighted scoring: affordability, bank NPV, cure probability
         
-        monthly_rate = apr / 100 / 12
-        return balance * (monthly_rate * (1 + monthly_rate) ** months) / ((1 + monthly_rate) ** months - 1)
-    
-    def _calculate_chargeoff_risk(self, plan_type: str, params: Dict[str, Any], balance: float, apr: float) -> float:
-        """Calculate chargeoff risk for a plan"""
-        base_risk = 0.15  # Base 15% risk
-        
-        # Plan type adjustments
-        if plan_type == "settlement":
-            base_risk *= 0.3  # Settlement reduces risk significantly
-        elif plan_type == "deferral":
-            base_risk *= 1.5  # Deferral increases risk
-        elif plan_type == "interest_reduction":
-            base_risk *= 0.7  # Interest reduction helps
-        elif plan_type == "re_aging":
-            base_risk *= 0.8  # Re-aging helps if customer complies
-        
-        # Balance size impact
-        if balance > 10000:
-            base_risk *= 1.2
-        elif balance < 2000:
-            base_risk *= 0.8
-        
-        # APR impact
-        if apr > 25:
-            base_risk *= 1.1
-        
-        return min(0.95, base_risk)  # Cap at 95%
-    
-    def _score_plan(self, candidate: Dict[str, Any], simulation: Dict[str, Any], 
-                   customer_state: CustomerState, policy_rules: Dict[str, Any]) -> Dict[str, Any]:
-        """Score a hardship plan based on adherence, affordability, and risk safety"""
-        
-        # Adherence score (0 or 1 if within policy)
-        adherence = 1.0  # Assume all generated candidates are policy-compliant
-        
-        # Affordability score
-        affordability = 1.0
-        if customer_state.income_monthly and customer_state.expenses_monthly:
-            disposable_income = customer_state.income_monthly - customer_state.expenses_monthly
+        Args:
+            plans: List of simulated payment plans
+            customer_state: Customer financial information
             
-            if simulation["schedule"]:
-                avg_payment = sum(p["payment"] for p in simulation["schedule"]) / len(simulation["schedule"])
-                if disposable_income > 0:
-                    affordability = min(1.0, disposable_income / avg_payment)
-                else:
-                    affordability = 0.1  # Very low if no disposable income
+        Returns:
+            List of ranked payment plans (highest score first)
+        """
+        weights = self.collections_rules.get("scoring", {}).get("weights", {})
+        affordability_weight = weights.get("affordability", 0.4)
+        bank_npv_weight = weights.get("bank_npv", 0.3)
+        cure_probability_weight = weights.get("cure_probability", 0.3)
         
-        # Risk safety score
-        risk_safety = 1 - simulation["chargeoff_risk"]
-        
-        # Combined score
-        total_score = adherence * affordability * risk_safety
-        
-        return {
-            "adherence": adherence,
-            "affordability": affordability,
-            "risk_safety": risk_safety,
-            "total_score": total_score
-        }
-    
-    def _generate_rationale(self, candidate: Dict[str, Any], customer_state: CustomerState, 
-                           policy_rules: Dict[str, Any]) -> str:
-        """Generate AI rationale for why this plan fits the customer and policy"""
-        try:
-            system_prompt = """You are a collections advisor explaining hardship plans. Generate a brief, professional rationale for why a specific hardship plan is appropriate for a customer's situation.
-
-Focus on:
-- Customer's financial situation and delinquency bucket
-- Plan benefits and suitability
-- Policy compliance
-- Risk mitigation
-
-Keep it concise (2-3 sentences) and professional."""
-
-            plan_type = candidate["type"]
-            bucket = customer_state.bucket
-            balance = customer_state.balance
+        for plan in plans:
+            # Calculate affordability score (lower monthly payment = higher score)
+            max_monthly = max(p.monthly_payment for p in plans) if plans else plan.monthly_payment
+            plan.affordability_score = 1.0 - (plan.monthly_payment / max_monthly) if max_monthly > 0 else 1.0
             
-            context = f"""
-Plan Type: {plan_type}
-Customer Bucket: {bucket}
-Balance: ${balance:.2f}
-Plan Parameters: {candidate.get('params', {})}
-"""
+            # Calculate bank NPV score (higher total paid = higher score for bank)
+            max_total = max(p.total_paid for p in plans) if plans else plan.total_paid
+            plan.bank_npv_score = plan.total_paid / max_total if max_total > 0 else 1.0
             
-            if customer_state.income_monthly:
-                context += f"Monthly Income: ${customer_state.income_monthly:.2f}\n"
-            if customer_state.expenses_monthly:
-                context += f"Monthly Expenses: ${customer_state.expenses_monthly:.2f}\n"
+            # Calculate cure probability (shorter term + reasonable payment = higher score)
+            duration_score = 1.0 - (plan.duration_months / 24.0)  # Prefer shorter terms
+            payment_ratio = plan.monthly_payment / customer_state.balance if customer_state.balance > 0 else 0
+            payment_reasonableness = 1.0 - min(payment_ratio, 0.1) / 0.1  # Reasonable if <10% of balance
+            plan.cure_probability_score = (duration_score + payment_reasonableness) / 2
             
-            user_message = f"Explain why this hardship plan is appropriate:\n{context}"
-            messages = [{"role": "user", "content": user_message}]
-            
-            response = chat(messages, system=system_prompt)
-            return response.strip()
-            
-        except Exception as e:
-            logger.error(f"Error generating rationale: {e}")
-            return f"This {candidate['type']} plan is designed to address the customer's {customer_state.bucket} delinquency status while maintaining policy compliance."
-    
-    def _get_mandatory_disclosures(self, plan_type: str, policy_rules: Dict[str, Any]) -> List[str]:
-        """Get mandatory disclosures for a plan type"""
-        disclosures = policy_rules.get("mandatory_disclosures", {})
-        return disclosures.get(plan_type, [])
-    
-    def _get_policy_citations(self) -> List[Citation]:
-        """Get policy citations from knowledge base with Tavily fallback"""
-        citations = []
-        
-        if not all([self.retriever, self.embedder]):
-            logger.warning("RAG components not available for policy citations")
-            return citations
-        
-        try:
-            # Retrieve hardship policy documents
-            results = retrieve(self.retriever, self.embedder, "hardship program policy", k=3)
-            
-            for result in results:
-                citations.append(Citation(
-                    source=result.get("filename", "Hardship Policy"),
-                    snippet=result.get("snippet", "")[:300] + "..."
-                ))
-            
-            # Tavily fallback if insufficient citations
-            if len(citations) < 1:
-                logger.info("Insufficient local hardship citations, searching web...")
-                try:
-                    web_docs = web_search_into_docstore(
-                        self.docstore,
-                        self.embedder,
-                        "credit card hardship program deferral re-aging disclosures",
-                        max_results=2
-                    )
-                    
-                    # Re-retrieve after adding web content
-                    if web_docs:
-                        results = retrieve(self.retriever, self.embedder, 
-                                         "hardship deferral re-aging disclosures", k=2)
-                        
-                        for result in results:
-                            citations.append(Citation(
-                                source=result.get("filename", "Web Search"),
-                                snippet=result.get("snippet", "")[:300] + "..."
-                            ))
-                            
-                except Exception as e:
-                    logger.warning(f"Web search for hardship policies failed: {e}")
-            
-        except Exception as e:
-            logger.error(f"Error retrieving policy citations: {e}")
-        
-        return citations
-
-# Test cases for collections scenarios
-def test_collections_advisor():
-    """Test CollectionsAdvisor with golden-path scenarios"""
-    print("🧪 Testing CollectionsAdvisor Golden Paths")
-    print("=" * 50)
-    
-    advisor = CollectionsAdvisor()
-    
-    test_cases = [
-        {
-            "name": "90-day bucket with low income → deferral wins",
-            "customer_state": CustomerState(
-                balance=5000.0,
-                apr=24.99,
-                bucket="90",
-                income_monthly=2500.0,
-                expenses_monthly=2200.0
-            ),
-            "expected_top_plan": "deferral"
-        },
-        {
-            "name": "120+ bucket → split settlement shown",
-            "customer_state": CustomerState(
-                balance=8000.0,
-                apr=29.99,
-                bucket="120+",
-                income_monthly=3000.0,
-                expenses_monthly=2800.0
-            ),
-            "expected_plan_type": "settlement"
-        },
-        {
-            "name": "Current bucket with good income → payment plan",
-            "customer_state": CustomerState(
-                balance=3000.0,
-                apr=19.99,
-                bucket="current",
-                income_monthly=5000.0,
-                expenses_monthly=3500.0
-            ),
-            "expected_plan_type": "payment_plan"
-        }
-    ]
-    
-    passed = 0
-    total = len(test_cases)
-    
-    for i, case in enumerate(test_cases, 1):
-        try:
-            print(f"{i}. {case['name']}")
-            
-            result = advisor.process_hardship_request(case["customer_state"])
-            
-            # Validate response structure
-            valid_structure = (
-                isinstance(result.plans, list) and
-                len(result.plans) > 0 and
-                isinstance(result.citations, list)
+            # Calculate weighted total score
+            plan.score = (
+                plan.affordability_score * affordability_weight +
+                plan.bank_npv_score * bank_npv_weight +
+                plan.cure_probability_score * cure_probability_weight
             )
             
-            # Check if expected plan type is present
-            plan_types = [plan.type for plan in result.plans]
-            expected_present = (
-                case.get("expected_top_plan") in plan_types or
-                case.get("expected_plan_type") in plan_types
-            )
-            
-            # Check plan completeness
-            plans_complete = all(
-                len(plan.payment_curve) > 0 and
-                plan.npv > 0 and
-                len(plan.disclosures) > 0 and
-                len(plan.why) > 10
-                for plan in result.plans
-            )
-            
-            success = valid_structure and expected_present and plans_complete
-            status = "✅ PASS" if success else "❌ FAIL"
-            
-            print(f"   Customer: {case['customer_state'].bucket} bucket, ${case['customer_state'].balance:.2f}")
-            print(f"   Plans generated: {len(result.plans)}")
-            print(f"   Plan types: {plan_types}")
-            print(f"   Expected type present: {expected_present}")
-            print(f"   Citations: {len(result.citations)}")
-            print(f"   Status: {status}")
-            print()
-            
-            if success:
-                passed += 1
-                
-        except Exception as e:
-            print(f"   ❌ ERROR: {e}")
-            print()
+            # Generate rationale
+            plan.rationale = self._generate_plan_rationale(plan, customer_state)
+        
+        # Sort by score (highest first)
+        ranked_plans = sorted(plans, key=lambda p: p.score, reverse=True)
+        logger.info(f"Ranked {len(ranked_plans)} plans, top score: {ranked_plans[0].score:.2f}")
+        
+        return ranked_plans
     
-    print(f"CollectionsAdvisor Test Results: {passed}/{total} passed")
-    return passed == total
-
-if __name__ == "__main__":
-    # Run tests
-    success = test_collections_advisor()
-    print(f"\n{'🎉 All tests passed!' if success else '⚠️ Some tests failed.'}")
+    def _generate_plan_rationale(self, plan: PaymentPlan, customer_state: CustomerState) -> str:
+        """Generate rationale for why this plan is recommended"""
+        rationale_parts = []
+        
+        if plan.affordability_score > 0.7:
+            rationale_parts.append("Affordable monthly payments")
+        elif plan.affordability_score > 0.4:
+            rationale_parts.append("Moderate monthly payments")
+        else:
+            rationale_parts.append("Higher payments but faster resolution")
+        
+        if plan.duration_months <= 6:
+            rationale_parts.append("short-term relief")
+        elif plan.duration_months <= 12:
+            rationale_parts.append("balanced timeline")
+        else:
+            rationale_parts.append("extended payment period")
+        
+        if customer_state.bucket in ["90", "120+"]:
+            rationale_parts.append("suitable for delinquent accounts")
+        
+        return " • ".join(rationale_parts).capitalize()
+    
+    def _generate_response_text(self, top_plans: List[PaymentPlan], customer_state: CustomerState) -> str:
+        """
+        Generate response text with top 2-3 options + why
+        
+        Args:
+            top_plans: Top ranked payment plans
+            customer_state: Customer financial information
+            
+        Returns:
+            Response text explaining the recommended options
+        """
+        response_parts = []
+        
+        # Header
+        response_parts.append(f"**Payment Plan Options for ${customer_state.balance:,.2f} Balance**")
+        response_parts.append(f"Account Status: {customer_state.bucket} days")
+        response_parts.append("")
+        
+        # Top options
+        for i, plan in enumerate(top_plans, 1):
+            response_parts.append(f"**Option {i}: {plan.name}**")
+            response_parts.append(f"• Monthly Payment: ${plan.monthly_payment:.2f}")
+            response_parts.append(f"• Duration: {plan.duration_months} months")
+            response_parts.append(f"• Total Paid: ${plan.total_paid:,.2f}")
+            response_parts.append(f"• Why: {plan.rationale}")
+            response_parts.append("")
+        
+        # Next steps
+        response_parts.append("**Next Steps:**")
+        response_parts.append("1. Review plan details with our specialist")
+        response_parts.append("2. Provide income verification if required")
+        response_parts.append("3. Set up automatic payments")
+        response_parts.append("4. Contact us for terms clarification if needed")
+        
+        return "\n".join(response_parts)
+    
+    def _build_plan_ui_cards(self, plans: List[PaymentPlan]) -> List[Dict[str, Any]]:
+        """
+        Build UI cards for payment plans
+        
+        Args:
+            plans: List of payment plans
+            
+        Returns:
+            List of UI cards for metadata
+        """
+        ui_cards = []
+        
+        for plan in plans:
+            # Build payment schedule summary (first 3 months + last month)
+            schedule_summary = []
+            for entry in plan.payment_schedule[:3]:
+                schedule_summary.append({
+                    "month": entry.month,
+                    "payment": entry.payment,
+                    "balance": entry.balance
+                })
+            
+            if len(plan.payment_schedule) > 3:
+                last_entry = plan.payment_schedule[-1]
+                schedule_summary.append({
+                    "month": last_entry.month,
+                    "payment": last_entry.payment,
+                    "balance": last_entry.balance
+                })
+            
+            ui_cards.append({
+                "type": "plan",
+                "name": plan.name,
+                "description": plan.description,
+                "monthly_payment": plan.monthly_payment,
+                "duration_months": plan.duration_months,
+                "total_paid": plan.total_paid,
+                "schedule": schedule_summary,
+                "rationale": plan.rationale,
+                "score": round(plan.score, 2),
+                "affordability": round(plan.affordability_score, 2),
+                "bank_npv": round(plan.bank_npv_score, 2),
+                "cure_probability": round(plan.cure_probability_score, 2)
+            })
+        
+        return ui_cards
+    
+    # Compatibility method for supervisor integration
+    def process_query(self, query: str) -> Dict[str, Any]:
+        """
+        Process collections query for supervisor integration
+        
+        Args:
+            query: User query about collections/hardship
+            
+        Returns:
+            Dict with response, metadata, confidence, sources
+        """
+        try:
+            # Extract balance and bucket from query (simplified)
+            import re
+            
+            balance_match = re.search(r'\$?([\d,]+(?:\.\d{2})?)', query)
+            balance = float(balance_match.group(1).replace(',', '')) if balance_match else 1000.0
+            
+            # Determine bucket based on query keywords
+            if any(word in query.lower() for word in ['overdue', 'late', 'behind']):
+                bucket = "90"
+            elif any(word in query.lower() for word in ['current', 'up to date']):
+                bucket = "current"
+            else:
+                bucket = "60"  # Default
+            
+            customer_state = CustomerState(
+                balance=balance,
+                apr=0.2399,  # Default APR
+                bucket=bucket
+            )
+            
+            result = self.process_hardship_request(customer_state)
+            
+            return {
+                "response": result.response,
+                "metadata": result.metadata,
+                "confidence": 0.8,
+                "sources": []
+            }
+            
+        except Exception as e:
+            logger.error(f"Collections process_query error: {e}")
+            return {
+                "response": f"Error processing collections query: {str(e)}",
+                "confidence": 0.2,
+                "sources": [],
+                "metadata": {"error": str(e)}
+            }

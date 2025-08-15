@@ -1,0 +1,19 @@
+clauses:
+  apr:
+    keywords: ["APR", "annual percentage", "interest rate", "finance charge"]
+  promotional_terms:
+    keywords: ["equal payment", "deferred interest", "paid in full", "promo period", "no interest"]
+  late_fees:
+    keywords: ["late fee", "returned payment", "penalty", "grace period"]
+  dispute_resolution:
+    keywords: ["arbitration", "binding", "small claims", "waiver", "class action"]
+  data_sharing:
+    keywords: ["share", "third party", "marketing partners", "opt out", "sell"]
+risk_flags:
+  missing_clause: "Key clause not found"
+  conflicting_numbers: "Conflicting numerical terms detected"
+  promo_ambiguity: "Promotional wording lacks 'paid in full' condition"
+ask_legal_triggers:
+  - "conflicting_numbers"
+  - "promo_ambiguity"
+  - "missing_clause"

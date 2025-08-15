@@ -1,0 +1,26 @@
+[
+  {
+    "tx_id": "t1",
+    "merchant": "Amazon",
+    "amount": 12499,
+    "date": "2025-12-15",
+    "posting_date": "2025-12-16",
+    "card_last4": "1111"
+  },
+  {
+    "tx_id": "t2",
+    "merchant": "Amazon",
+    "amount": 12499,
+    "date": "2025-12-15",
+    "posting_date": "2025-12-16",
+    "card_last4": "1111"
+  },
+  {
+    "tx_id": "t3",
+    "merchant": "UrbanLiving",
+    "amount": 60000,
+    "date": "2025-12-10",
+    "posting_date": "2025-12-12",
+    "card_last4": "1111"
+  }
+]

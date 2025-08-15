@@ -1,6 +1,7 @@
 """
-Dispute & Benefits Copilot
-Turns messy customer narratives + receipts into compliant dispute packets
+Dispute & Benefits Copilot - Reg-E-like Packet Processing
+Turns messy customer narratives + receipts into compliant dispute packets with category detection,
+eligibility windows, evidence classification, and structured packet assembly
 """
 
 import re
@@ -18,43 +19,76 @@ from app.tools.tavily_search import web_search_into_docstore
 
 logger = logging.getLogger(__name__)
 
-# Pydantic models for strict output schema enforcement
-class DisputeFields(BaseModel):
-    merchant: str
+# Enhanced Pydantic models for Reg-E-like processing
+class EvidenceItem(BaseModel):
+    type: str  # merchant, date, amount, order_id, chat, etc.
+    value: str
+    confidence: float
+    source: str  # narrative, uploaded_text, extracted
+
+class TimelineEvent(BaseModel):
     date: str
-    amount: float
-    reason: str
-
-class DisputePacket(BaseModel):
-    summary: str
-    fields: DisputeFields
-    letter: str
-    attachments: List[str]
-
-class MerchantResolution(BaseModel):
-    message: str
-    checklist: List[str]
-
-class Citation(BaseModel):
+    event: str
     source: str
-    snippet: str
+
+class DisputeStatus(BaseModel):
+    stage: str  # intake, compiled, ready_to_submit, submitted, under_review
+    likelihood: str  # low, medium, high
+    next_milestone: str
+    eligible: bool
+    eligibility_reason: str
+
+class PacketPreview(BaseModel):
+    category: str
+    merchant: str
+    amount: float
+    timeline: List[TimelineEvent]
+    evidence: List[EvidenceItem]
+    next_update_date: str
 
 class DisputeResponse(BaseModel):
-    triage: str
-    merchant_resolution: MerchantResolution
-    packet: DisputePacket
-    citations: List[Citation]
+    response: str  # Short human summary + "ready to submit" note
+    metadata: Dict[str, Any]  # Contains status, ui_cards, handoffs
 
 class DisputeCopilot:
     """
-    Dispute & Benefits Copilot for processing customer narratives into compliant dispute packets
+    Dispute & Benefits Copilot for Reg-E-like dispute packet processing with category detection,
+    eligibility windows, evidence classification, and structured packet assembly
     """
     
-    def __init__(self, docstore=None, embedder=None, retriever=None):
-        """Initialize DisputeCopilot with RAG components for policy retrieval"""
+    def __init__(self, docstore=None, embedder=None, retriever=None, rules_loader=None):
+        """Initialize DisputeCopilot with RAG components and rules-based processing"""
         self.docstore = docstore
         self.embedder = embedder
         self.retriever = retriever
+        self.rules_loader = rules_loader
+        
+        # Load dispute rules from centralized loader or use defaults
+        if rules_loader:
+            self.dispute_rules = rules_loader.get_rules('dispute') or {}
+            logger.info("DisputeCopilot loaded rules from centralized rules loader")
+        else:
+            self.dispute_rules = self._load_fallback_rules()
+        
+        # Extract rule components
+        self.categories = self.dispute_rules.get("categories", {})
+        self.demo_clocks = self.dispute_rules.get("demo_clocks", {"posting_window_days": 60, "purchase_window_days": 90})
+        self.status_pipeline = self.dispute_rules.get("status_pipeline", ["intake", "compiled", "ready_to_submit", "submitted", "under_review"])
+        self.likelihood_buckets = self.dispute_rules.get("likelihood_buckets", ["low", "medium", "high"])
+        
+    def _load_fallback_rules(self) -> Dict[str, Any]:
+        """Fallback rules if centralized loader not available"""
+        return {
+            "categories": {
+                "duplicate_charge": {"required_evidence": ["statement_screenshot", "merchant_name", "date", "amount"]},
+                "item_not_received": {"required_evidence": ["order_confirmation", "expected_delivery", "merchant_contact_attempt"]},
+                "wrong_amount": {"required_evidence": ["receipt", "statement_screenshot", "correct_amount"]},
+                "canceled_but_charged": {"required_evidence": ["cancellation_confirmation", "statement_screenshot"]}
+            },
+            "demo_clocks": {"posting_window_days": 60, "purchase_window_days": 90},
+            "status_pipeline": ["intake", "compiled", "ready_to_submit", "submitted", "under_review"],
+            "likelihood_buckets": ["low", "medium", "high"]
+        }
     
     def process_dispute(self, narrative: str, merchant: Optional[str] = None, 
                        amount: Optional[float] = None, uploaded_text: Optional[str] = None) -> DisputeResponse:

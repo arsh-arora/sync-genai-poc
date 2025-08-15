@@ -1,0 +1,9 @@
+{
+  "input": "Explain the promo and late fee rules from this T&C",
+  "expect_contains": [
+    "Promotional Terms",
+    "Late Fees",
+    "clause",
+    "ask legal"
+  ]
+}

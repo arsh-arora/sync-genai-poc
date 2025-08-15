@@ -1,0 +1,7 @@
+{
+  "demo_no_rules": true,
+  "disclosures_required": true,
+  "trustshield_enabled": true,
+  "allow_parallel_execution": true,
+  "offline_mode": true
+}

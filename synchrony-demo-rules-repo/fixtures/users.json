@@ -1,0 +1,14 @@
+[
+  {
+    "user_id": "u_consumer_01",
+    "name": "Asha",
+    "persona": "consumer",
+    "city": "Bengaluru"
+  },
+  {
+    "user_id": "u_partner_01",
+    "name": "Ravi",
+    "persona": "partner",
+    "company": "HomeArc"
+  }
+]

@@ -1,0 +1,12 @@
+demo_scoring:
+  buckets:
+    - name: "eligible"
+      price_upper: 300000
+      explanation: "Within typical range for demo prequalification."
+    - name: "uncertain"
+      price_upper: 600000
+      explanation: "Borderline amount; additional info may be required."
+    - name: "ineligible"
+      price_upper: 999999999
+      explanation: "Above demo threshold."
+notes: "Deterministic hashing of user & price -> choose bucket for repeatability."

@@ -1,0 +1,23 @@
+pii_patterns:
+  email: "(?i)[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}"
+  phone: "(?i)(\\+?\\d[\\d\\s-]{7,}\\d)"
+  address_hint: "(?i)\\d+\\s+[A-Za-z0-9\\s]+"
+risk_phrases_block:
+  - "gift card refund"
+  - "crypto refund"
+  - "send me OTP"
+  - "no credit check"
+  - "guaranteed approval"
+risk_phrases_warn:
+  - "wire urgently"
+  - "zelle overpayment"
+  - "account unlock fee"
+brand_lookalike_patterns:
+  - "(?i)synchrony-?support\\.(co|info|top)"
+link_checks:
+  max_redirects: 3
+  min_domain_age_days: 30
+responses:
+  high_risk_action: "BlockAndShowSafeActions"
+  medium_risk_action: "WarnAndContinue"
+  low_risk_action: "Pass"

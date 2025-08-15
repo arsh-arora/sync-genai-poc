@@ -1,0 +1,63 @@
+procedures:
+  dental_implant:
+    typical_cost_range: [60000, 200000]
+    min_purchase_for_promo: 20000
+    specialty: "dental"
+  orthodontics:
+    typical_cost_range: [30000, 120000]
+    min_purchase_for_promo: 15000
+    specialty: "dental"
+  dermatology_laser:
+    typical_cost_range: [15000, 80000]
+    min_purchase_for_promo: 10000
+    specialty: "derm"
+
+oop_estimator:
+  deductible_default: 1500.00
+  coinsurance_default: 0.20
+  caveat: "Illustrative only — confirm with insurer and provider."
+
+oopp_defaults:
+  deductible:
+    individual: 1500.00
+    family: 3000.00
+  coinsurance:
+    in_network: 0.20
+    out_network: 0.40
+  copay:
+    primary_care: 25.00
+    specialist: 50.00
+    emergency: 150.00
+
+financing_options:
+  equal_payment:
+    terms: [6, 12, 18, 24, 36, 48, 60]
+    min_amount: 200.00
+    max_amount: 25000.00
+    apr_range:
+      promotional: 0.00
+      standard: [14.90, 26.99]
+  deferred_interest:
+    terms: [6, 12, 18, 24]
+    min_amount: 200.00
+    max_amount: 25000.00
+    promo_periods: [6, 12, 18, 24]
+    standard_apr: 26.99
+
+disclosures:
+  carecredit_generic: "CareCredit healthcare financing subject to credit approval. Minimum monthly payments required. See carecredit.com for details."
+  equal_payment_generic: "Equal monthly payments required. Subject to credit approval. See terms and conditions."
+  deferred_interest_generic: "If promotional balance is not paid in full by end of promotional period, interest will be charged from purchase date. Subject to credit approval."
+
+provider_search:
+  max_results: 3
+  search_radius_miles: 25
+  appointment_priority_weight: 0.6
+  distance_priority_weight: 0.4
+
+specialty_mappings:
+  dental: ["dental", "oral", "tooth", "teeth"]
+  dermatology: ["skin", "derm", "cosmetic"]
+  veterinary: ["pet", "animal", "vet"]
+  ophthalmology: ["eye", "vision", "optical"]
+  plastic_surgery: ["plastic", "cosmetic", "aesthetic"]

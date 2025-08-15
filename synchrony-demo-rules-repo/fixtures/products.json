@@ -1,0 +1,23 @@
+[
+  {
+    "sku": "UL-RECLINER-60K",
+    "title": "UrbanLiving Recliner",
+    "category": "furniture",
+    "price": 60000,
+    "partner_id": "urbanliving"
+  },
+  {
+    "sku": "HA-SOFA-85K",
+    "title": "HomeArc Plush Sofa",
+    "category": "furniture",
+    "price": 85000,
+    "partner_id": "homearc"
+  },
+  {
+    "sku": "WW-TIRE-20K",
+    "title": "WheelWorks All-Season Tire Set",
+    "category": "tires",
+    "price": 20000,
+    "partner_id": "wheelworks"
+  }
+]

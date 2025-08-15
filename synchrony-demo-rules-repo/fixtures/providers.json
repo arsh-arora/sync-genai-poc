@@ -1,0 +1,86 @@
+{
+  "providers": [
+    {
+      "provider_id": "prov_dent_01",
+      "name": "SmileCraft Dental",
+      "city": "Bengaluru",
+      "specialty": "dental",
+      "enrolled": true,
+      "address": "MG Road, Bengaluru 560001",
+      "phone": "+91 80 2555 0123",
+      "accepts_carecredit": true,
+      "next_appt_days": 3
+    },
+    {
+      "provider_id": "prov_dent_02", 
+      "name": "Indira Dental Care",
+      "city": "Bengaluru",
+      "specialty": "dental",
+      "enrolled": true,
+      "address": "Koramangala, Bengaluru 560034",
+      "phone": "+91 80 2555 0456",
+      "accepts_carecredit": true,
+      "next_appt_days": 7
+    },
+    {
+      "provider_id": "prov_derm_01",
+      "name": "SkinGlow Clinic", 
+      "city": "Bengaluru",
+      "specialty": "dermatology",
+      "enrolled": true,
+      "address": "Brigade Road, Bengaluru 560001",
+      "phone": "+91 80 2555 0789",
+      "accepts_carecredit": true,
+      "next_appt_days": 14
+    },
+    {
+      "provider_id": "prov_dent_03",
+      "name": "Manhattan Dental Group",
+      "city": "New York",
+      "specialty": "dental",
+      "enrolled": true,
+      "address": "123 Park Ave, New York, NY 10001",
+      "phone": "(212) 555-0123",
+      "accepts_carecredit": true,
+      "next_appt_days": 5
+    },
+    {
+      "provider_id": "prov_derm_02",
+      "name": "Chicago Dermatology Center",
+      "city": "Chicago", 
+      "specialty": "dermatology",
+      "enrolled": true,
+      "address": "321 Michigan Ave, Chicago, IL 60601",
+      "phone": "(312) 555-0321",
+      "accepts_carecredit": true,
+      "next_appt_days": 10
+    },
+    {
+      "provider_id": "prov_vet_01",
+      "name": "Phoenix Animal Hospital",
+      "city": "Phoenix",
+      "specialty": "veterinary",
+      "enrolled": true,
+      "address": "111 Desert Blvd, Phoenix, AZ 85001",
+      "phone": "(602) 555-0111",
+      "accepts_carecredit": true,
+      "next_appt_days": 2
+    }
+  ],
+  "specialties": {
+    "dental": ["dental", "tooth", "teeth", "crown", "filling", "cleaning", "root canal", "extraction", "oral", "periodontal", "orthodontic"],
+    "dermatology": ["skin", "mole", "dermatology", "acne", "rash", "lesion", "biopsy", "cosmetic", "botox", "laser"],
+    "veterinary": ["pet", "dog", "cat", "animal", "veterinary", "vet", "vaccination", "spay", "neuter", "emergency"],
+    "ophthalmology": ["eye", "vision", "glasses", "contact", "cataract", "lasik", "glaucoma", "retinal", "ophthalmology"]
+  },
+  "procedure_mappings": {
+    "D0120": {"specialty": "dental", "name": "Periodic oral evaluation"},
+    "D1110": {"specialty": "dental", "name": "Prophylaxis cleaning"}, 
+    "D0274": {"specialty": "dental", "name": "Bitewing X-rays"},
+    "D2140": {"specialty": "dental", "name": "Amalgam filling"},
+    "D2750": {"specialty": "dental", "name": "Crown - porcelain"},
+    "99213": {"specialty": "dermatology", "name": "Office visit - established patient"},
+    "11100": {"specialty": "dermatology", "name": "Biopsy of skin lesion"},
+    "17000": {"specialty": "dermatology", "name": "Destruction of lesion"}
+  }
+}

@@ -1,0 +1,26 @@
+[
+  {
+    "partner_id": "urbanliving",
+    "name": "UrbanLiving",
+    "categories": [
+      "furniture",
+      "home_decor"
+    ]
+  },
+  {
+    "partner_id": "homearc",
+    "name": "HomeArc",
+    "categories": [
+      "furniture",
+      "appliances"
+    ]
+  },
+  {
+    "partner_id": "wheelworks",
+    "name": "WheelWorks",
+    "categories": [
+      "tires",
+      "auto"
+    ]
+  }
+]

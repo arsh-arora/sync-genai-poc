@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Message, ChatRequest, ChatResponse, UploadedPdf } from './types';
+import { Message, ChatRequest, ChatResponse, UploadedPdf, UserType } from './types';
 import { AGENTS } from './config/agents';
 import Header from './components/Header';
 import LeftRail from './components/LeftRail';
@@ -7,6 +7,7 @@ import ChatPane from './components/ChatPane';
 import RightInspector from './components/RightInspector';
 
 function App() {
+  const [userType, setUserType] = useState<UserType>('consumer'); // Default to consumer
   const [selectedAgent, setSelectedAgent] = useState('smart');
   const [allowTavily, setAllowTavily] = useState(false);
   const [allowLlmKnowledge, setAllowLlmKnowledge] = useState(true);
@@ -48,11 +49,12 @@ function App() {
             message: inputText, 
             allow_tavily: allowTavily,
             allow_llm_knowledge: allowLlmKnowledge,
-            allow_web_search: allowWebSearch
+            allow_web_search: allowWebSearch,
+            user_type: userType
           }
         : selectedAgent === 'imagegen'
-        ? { prompt: inputText, include_text: true, style_hints: [] }
-        : { query: inputText };
+        ? { prompt: inputText, include_text: true, style_hints: [], user_type: userType }
+        : { query: inputText, user_type: userType };
 
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -173,6 +175,16 @@ function App() {
     }
   };
 
+  const handleResetPersona = () => {
+    setUserType('consumer');
+    setMessages([]);
+    setCitations([]);
+    setToolTrace([]);
+  };
+
+  // Auto-detect persona from context instead of manual selection
+  // No landing page needed - context-based routing handles persona detection
+
   return (
     <div className="h-screen flex flex-col bg-slate-50">
       {/* Header */}
@@ -185,6 +197,7 @@ function App() {
         setAllowWebSearch={setAllowWebSearch}
         onClear={clearChat}
         onExport={exportJSON}
+        onResetPersona={handleResetPersona}
       />
 
       {/* Main Content */}
@@ -194,6 +207,7 @@ function App() {
           selectedAgent={selectedAgent}
           onSelectAgent={handleSelectAgent}
           onUseExample={handleUseExample}
+          userType={userType}
         />
 
         {/* Chat Pane */}
