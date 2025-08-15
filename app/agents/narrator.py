@@ -434,7 +434,19 @@ class PortfolioIntelNarrator:
         
         return ui_cards
     
-    # Compatibility method for supervisor integration
+    # Compatibility methods for supervisor integration
+    def process_question(self, query: str) -> NarratorResponse:
+        """
+        Process narrator question for supervisor integration (legacy method)
+        
+        Args:
+            query: User query about portfolio insights
+            
+        Returns:
+            NarratorResponse with insights
+        """
+        return self.generate_insights(query)
+    
     def process_query(self, query: str) -> Dict[str, Any]:
         """
         Process narrator query for supervisor integration

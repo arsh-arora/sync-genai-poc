@@ -846,18 +846,16 @@ Respond with JSON:
                 # Try different method names based on agent
                 if agent_name == "narrator":
                     result = agent.process_question(query)
-                    # Convert NarratorResponse to readable text
-                    response_text = f"Analysis Results:\n\n"
-                    for finding in result.findings:
-                        response_text += f"**{finding.title}**\n"
-                        response_text += f"Evidence: {finding.evidence}\n\n"
+                    # Handle new NarratorResponse format with insights and UI cards
+                    response_text = result.response
+                    ui_cards = result.metadata.get("ui_cards", [])
+                    sources = result.metadata.get("sources", [])
                     
-                    if result.actions:
-                        response_text += "Recommended Actions:\n"
-                        for action in result.actions:
-                            response_text += f"• {action.hypothesis} (Owner: {action.owner})\n"
-                    
-                    sources = [citation.source for citation in result.citations]
+                    # Add insights summary to response if available
+                    if ui_cards:
+                        insights_count = len(ui_cards)
+                        kpis_analyzed = result.metadata.get("kpis_analyzed", 0)
+                        response_text += f"\n\n💡 **Analysis Summary:** {insights_count} key insights from {kpis_analyzed} KPIs"
                     
                 elif agent_name == "dispute":
                     result = agent.process_dispute(query)
@@ -966,12 +964,20 @@ Respond with JSON:
                     else:
                         response_text = str(result)
                 
+                # Build metadata for agents with enhanced responses
+                metadata = {}
+                if agent_name == "narrator" and hasattr(result, 'metadata'):
+                    metadata = result.metadata
+                elif agent_name in ["dispute", "collections", "carecredit"] and hasattr(result, 'metadata'):
+                    metadata = result.metadata
+                
                 return AgentResult(
                     agent_type=agent_name,
                     success=True,
                     response=response_text,
                     confidence=confidence,
                     sources=sources,
+                    metadata=metadata,
                     processing_time=time.time() - start_time
                 )
                 
