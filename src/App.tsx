@@ -18,6 +18,7 @@ function App() {
   const [rightPanel, setRightPanel] = useState('citations');
   const [citations, setCitations] = useState<string[]>([]);
   const [toolTrace, setToolTrace] = useState<any[]>([]);
+  const [agentTrace, setAgentTrace] = useState<any>(null);
   const [uploadedPdfs, setUploadedPdfs] = useState<UploadedPdf[]>([]);
   const [selectedPdfChunk, setSelectedPdfChunk] = useState(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -80,11 +81,18 @@ function App() {
         document_assessment: result.document_assessment,
         image_data: result.image_data,
         image_format: result.image_format,
+        agent_trace: result.agent_trace,  // 🎭 Add the missing agent_trace!
         timestamp: new Date()
       };
 
       setMessages(prev => [...prev, aiMessage]);
       setCitations(result.sources || []);
+      setAgentTrace(result.agent_trace || null);
+      
+      // Auto-switch to Tool Trace if agent trace exists
+      if (result.agent_trace && result.agent_trace.agent_executions?.length > 1) {
+        setRightPanel('tools');
+      }
     } catch (error) {
       console.error('Error sending message:', error);
       const errorMessage: Message = {
@@ -160,6 +168,7 @@ function App() {
     setMessages([]);
     setCitations([]);
     setToolTrace([]);
+    setAgentTrace(null);
   };
 
   const exportJSON = () => {
@@ -180,6 +189,7 @@ function App() {
     setMessages([]);
     setCitations([]);
     setToolTrace([]);
+    setAgentTrace(null);
   };
 
   // Auto-detect persona from context instead of manual selection
@@ -228,6 +238,7 @@ function App() {
           setActivePanel={setRightPanel}
           citations={citations}
           toolTrace={toolTrace}
+          agentTrace={agentTrace}
           uploadedPdfs={uploadedPdfs}
           selectedPdfChunk={selectedPdfChunk}
           setSelectedPdfChunk={setSelectedPdfChunk}

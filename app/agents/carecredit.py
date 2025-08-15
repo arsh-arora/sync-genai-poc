@@ -131,6 +131,11 @@ class CareCredit:
         try:
             logger.info("Processing CareCredit treatment estimate")
             
+            # Step 0: Validate that this is actually a medical/dental estimate
+            if not self._is_medical_estimate(estimate_text):
+                logger.info("Input is not a medical estimate - treating as general CareCredit query")
+                return self._handle_general_query(estimate_text)
+            
             # Step 1: Parse estimate into line items (deterministic parser)
             parsed_items = self.estimate_parse_table(estimate_text)
             logger.info(f"Parsed {len(parsed_items)} line items from estimate")
@@ -293,7 +298,15 @@ Focus on actual billable procedures, ignore totals and administrative text."""
             
             # Try to parse Gemini response as JSON
             try:
-                parsed_json = json.loads(response.strip())
+                # Debug: Print the raw response
+                logger.info(f"Raw Gemini response: {repr(response[:200])}")
+                
+                # Clean the response - handle markdown code blocks
+                response_clean = self._extract_json(response)
+                
+                logger.info(f"Cleaned response: {repr(response_clean[:200])}")
+                
+                parsed_json = json.loads(response_clean)
                 procedures = []
                 
                 for item in parsed_json:
@@ -675,7 +688,7 @@ Focus on actual billable procedures, ignore totals and administrative text."""
         
         # Check keywords in text and procedure names
         text_lower = text.lower()
-        all_text = text_lower + " " + " ".join(proc.name.lower() for proc in procedures)
+        all_text = text_lower + " " + " ".join(proc.name.lower() for proc in procedures if proc.name)
         
         specialty_scores = {}
         for specialty, keywords in self.specialties.items():
@@ -688,6 +701,118 @@ Focus on actual billable procedures, ignore totals and administrative text."""
         
         # Default to dental (most common CareCredit usage)
         return "dental"
+    
+    def _extract_json(self, text: str) -> str:
+        """Extract JSON from LLM response that may contain markdown formatting"""
+        import re
+        
+        # Try to find JSON in code blocks
+        json_match = re.search(r'```(?:json)?\s*(\{.*?\}|\[.*?\])\s*```', text, re.DOTALL)
+        if json_match:
+            return json_match.group(1)
+        
+        # Try to find JSON directly
+        json_match = re.search(r'(\{.*?\}|\[.*?\])', text, re.DOTALL)
+        if json_match:
+            return json_match.group(1)
+        
+        # Fallback
+        return text.strip()
+    
+    def _is_medical_estimate(self, text: str) -> bool:
+        """
+        Check if the input text is a medical/dental estimate with procedures and costs
+        
+        Args:
+            text: Input text to validate
+            
+        Returns:
+            True if this appears to be a medical estimate, False otherwise
+        """
+        # Convert to lowercase for case-insensitive matching
+        text_lower = text.lower()
+        
+        # Indicators that this is NOT a medical estimate (general queries)
+        query_indicators = [
+            "find me", "show me", "i need", "looking for", "search for",
+            "what are", "how much", "can you", "help me find",
+            "equipment", "financing options", "carecredit options"
+        ]
+        
+        if any(indicator in text_lower for indicator in query_indicators):
+            return False
+        
+        # Indicators that this IS a medical estimate
+        estimate_indicators = [
+            "$", "cost", "total", "procedure", "treatment", "exam", "cleaning",
+            "filling", "crown", "implant", "extraction", "surgery", "consultation",
+            "x-ray", "root canal", "orthodontic", "periodontal"
+        ]
+        
+        # Medical billing patterns
+        billing_patterns = [
+            r'\$[\d,]+\.?\d*',  # Dollar amounts
+            r'procedure.*\$',   # Procedure with cost
+            r'treatment.*\$',   # Treatment with cost  
+            r'\d+\.\d+',       # Decimal numbers (costs)
+        ]
+        
+        # Check for cost indicators
+        has_cost_indicators = any(indicator in text_lower for indicator in estimate_indicators)
+        
+        # Check for billing patterns
+        import re
+        has_billing_patterns = any(re.search(pattern, text_lower) for pattern in billing_patterns)
+        
+        # Must have either cost indicators or billing patterns
+        return has_cost_indicators or has_billing_patterns
+    
+    def _handle_general_query(self, query: str) -> CreditResponse:
+        """
+        Handle general CareCredit queries (not medical estimates)
+        
+        Args:
+            query: General query about CareCredit options
+            
+        Returns:
+            CreditResponse with general information
+        """
+        # Extract any budget information from the query
+        import re
+        budget_match = re.search(r'under \$?([0-9,]+)', query.lower())
+        budget = None
+        if budget_match:
+            budget = float(budget_match.group(1).replace(',', ''))
+        
+        # Generate a helpful response about CareCredit in general
+        response_text = f"""I can help you understand CareCredit financing options for healthcare expenses.
+        
+**CareCredit Overview:**
+• Special healthcare credit card for medical, dental, veterinary, and vision expenses
+• Promotional financing options including 6, 12, 18, and 24-month plans
+• No interest if paid in full within promotional period
+• Accepted at over 260,000 healthcare providers nationwide
+
+**Next Steps:**
+1. **Get a specific treatment estimate** from your healthcare provider
+2. **Upload the estimate** here for detailed financing analysis
+3. **Apply for CareCredit** at carecredit.com if you haven't already
+4. **Use the CareCredit mobile app** to manage your account
+
+For detailed financing calculations, please provide a specific treatment estimate with procedures and costs."""
+
+        if budget:
+            response_text += f"\n\n**Budget Note:** For expenses around ${budget:,.0f}, CareCredit offers several promotional periods that can help manage costs."
+
+        return CreditResponse(
+            response=response_text,
+            metadata={
+                "ui_cards": [],
+                "disclosures": ["carecredit_generic"],
+                "query_type": "general_inquiry",
+                "budget_mentioned": budget
+            }
+        )
     
     def _generate_response_text(
         self,

@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { UploadedPdf } from '../types';
+import { UploadedPdf, AgentTrace } from '../types';
+import AgentTheater from './AgentTheater';
 
 interface RightInspectorProps {
   activePanel: string;
   setActivePanel: (panel: string) => void;
   citations: string[];
   toolTrace: any[];
+  agentTrace: AgentTrace | null;
   uploadedPdfs: UploadedPdf[];
   selectedPdfChunk: any;
   setSelectedPdfChunk: (chunk: any) => void;
@@ -16,6 +18,7 @@ const RightInspector: React.FC<RightInspectorProps> = ({
   setActivePanel,
   citations,
   toolTrace,
+  agentTrace,
   uploadedPdfs,
   selectedPdfChunk,
   setSelectedPdfChunk
@@ -38,14 +41,19 @@ const RightInspector: React.FC<RightInspectorProps> = ({
           </button>
           <button
             onClick={() => setActivePanel('tools')}
-            className={`flex-1 px-4 py-3 text-sm font-medium border-b-2 ${
+            className={`flex-1 px-4 py-3 text-sm font-medium border-b-2 relative ${
               activePanel === 'tools'
                 ? 'text-teal-600 border-teal-500'
                 : 'text-slate-500 border-transparent hover:text-slate-700 hover:border-slate-300'
             }`}
           >
-            <i className="fas fa-cog mr-2"></i>
-            Tool Trace
+            <i className="fas fa-route mr-2"></i>
+            Agent Theater
+            {agentTrace && agentTrace.agent_executions?.length > 1 && (
+              <span className="absolute -top-1 -right-1 w-5 h-5 bg-purple-500 text-white text-xs rounded-full flex items-center justify-center">
+                {agentTrace.agent_executions.length}
+              </span>
+            )}
           </button>
           <button
             onClick={() => setActivePanel('pdfs')}
@@ -97,26 +105,20 @@ const RightInspector: React.FC<RightInspectorProps> = ({
         )}
 
         {activePanel === 'tools' && (
-          <div className="p-6">
-            <h3 className="text-lg font-semibold text-slate-800 mb-6">Tool Trace</h3>
-            {toolTrace.length > 0 ? (
-              <div className="space-y-4">
-                {toolTrace.map((trace, index) => (
-                  <div key={index} className="p-4 bg-slate-50 rounded-xl border border-slate-200 hover:border-slate-300 transition-colors">
-                    <div className="text-base font-semibold text-slate-800 mb-3">
-                      {trace.tool_name}
-                    </div>
-                    <div className="text-sm text-slate-600 font-medium">
-                      Status: <span className="text-teal-600">{trace.status}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
+          <div className="p-4">
+            {agentTrace && agentTrace.agent_executions?.length > 0 ? (
+              <AgentTheater 
+                trace={agentTrace} 
+                isVisible={true} 
+                compact={false}
+              />
             ) : (
               <div className="text-center py-12">
-                <i className="fas fa-cog text-4xl text-slate-300 mb-4"></i>
-                <p className="text-slate-500 text-base font-medium">No tool traces yet</p>
-                <p className="text-sm text-slate-400 mt-2">Tool execution logs will appear here</p>
+                <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-r from-purple-100 to-blue-100 rounded-full flex items-center justify-center">
+                  <i className="fas fa-route text-2xl text-purple-600"></i>
+                </div>
+                <p className="text-slate-500 text-base font-medium">No agent executions yet</p>
+                <p className="text-sm text-slate-400 mt-2">Multi-agent execution traces will appear here when multiple agents collaborate</p>
               </div>
             )}
           </div>

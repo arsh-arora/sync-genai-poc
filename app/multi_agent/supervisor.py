@@ -20,6 +20,7 @@ from .state import (
     TaskComplexity, ExecutionStrategy, AgentTask, AgentResult,
     create_initial_state, create_supervisor_state, create_worker_state
 )
+from ..utils.tracer import get_tracer
 
 logger = logging.getLogger(__name__)
 
@@ -163,30 +164,85 @@ class FinancialServicesSupervisor:
         """
         logger.info(f"Processing query with enhanced Smart Chat: {query[:100]}...")
         
+        # Start tracing for Agent Theater
+        tracer = get_tracer()
+        trace_id = tracer.start_trace()
+        
         try:
-            # Create initial state
-            initial_state = create_initial_state(
-                original_query=query,
-                allow_tavily=allow_tavily,
-                allow_llm_knowledge=allow_llm_knowledge,
-                allow_web_search=allow_web_search,
-                user_context=user_context
-            )
-            
-            # Add user message to state
-            initial_state["messages"] = [HumanMessage(content=query)]
-            
-            # Execute the graph workflow
-            logger.info(f"🚀 Executing LangGraph with initial state: {list(initial_state.keys())}")
-            final_state = await self.graph.ainvoke(initial_state)
-            logger.info(f"✅ Graph execution completed. Final state keys: {list(final_state.keys())}")
-            logger.info(f"🔍 Graph final state final_response: {final_state.get('final_response')}")
+            with tracer.trace_agent('smart', 'Smart Chat') as smart_execution:
+                if smart_execution:
+                    tracer.set_agent_summaries(
+                        input_summary=query[:200],
+                        output_summary="Processing multi-agent orchestration"
+                    )
+                
+                # Create initial state
+                initial_state = create_initial_state(
+                    original_query=query,
+                    allow_tavily=allow_tavily,
+                    allow_llm_knowledge=allow_llm_knowledge,
+                    allow_web_search=allow_web_search,
+                    user_context=user_context
+                )
+                
+                # Add user message to state
+                initial_state["messages"] = [HumanMessage(content=query)]
+                
+                # Execute the graph workflow
+                logger.info(f"🚀 Executing LangGraph with initial state: {list(initial_state.keys())}")
+                final_state = await self.graph.ainvoke(initial_state)
+                logger.info(f"✅ Graph execution completed. Final state keys: {list(final_state.keys())}")
+                logger.info(f"🔍 Graph final state final_response: {final_state.get('final_response')}")
+                
+                # Update smart agent execution with final response
+                if smart_execution:
+                    response_preview = str(final_state.get('final_response', ''))[:200]
+                    tracer.set_agent_summaries(output_summary=response_preview)
             
             # Format response for API compatibility
-            return self._format_response(final_state)
+            response = self._format_response(final_state)
+            
+            # Add trace to response
+            trace = tracer.finish_trace()
+            if trace:
+                response['agent_trace'] = {
+                    'execution_id': trace.execution_id,
+                    'total_duration_ms': trace.total_duration_ms,
+                    'agent_executions': [
+                        {
+                            'agent_name': execution.agent_name,
+                            'display_name': execution.display_name,
+                            'started_at': execution.started_at,
+                            'duration_ms': execution.duration_ms,
+                            'status': execution.status,
+                            'tool_calls': [
+                                {
+                                    'tool_name': tc.tool_name,
+                                    'duration_ms': tc.duration_ms,
+                                    'status': tc.status,
+                                    'input_summary': tc.input_summary,
+                                    'output_summary': tc.output_summary,
+                                    'metadata': tc.metadata
+                                }
+                                for tc in execution.tool_calls
+                            ],
+                            'input_summary': execution.input_summary,
+                            'output_summary': execution.output_summary,
+                            'confidence': execution.confidence,
+                            'sources_used': execution.sources_used
+                        }
+                        for execution in trace.agent_executions
+                    ],
+                    'routing_decision': trace.routing_decision
+                }
+            
+            return response
             
         except Exception as e:
             logger.error(f"Multi-agent processing failed: {e}", exc_info=True)
+            
+            # Ensure trace is finished even on error
+            tracer.finish_trace()
             
             # Graceful degradation - fallback to single agent
             return await self._emergency_fallback(query, allow_tavily, allow_llm_knowledge, allow_web_search)
@@ -788,188 +844,208 @@ Respond with JSON:
         import time
         start_time = time.time()
         
+        # Get tracer for this execution
+        tracer = get_tracer()
+        
         try:
             agent = self.agents.get(agent_name)
             if not agent:
                 raise ValueError(f"Agent {agent_name} not found")
             
-            # Execute based on agent type with proper method calls
-            if agent_name == "trustshield":
-                result = agent.scan(query)
-                return AgentResult(
-                    agent_type=agent_name,
-                    success=True,
-                    response=result.get("analysis", "No analysis provided"),
-                    confidence=result.get("confidence", 0.5),
-                    sources=result.get("citations", []),
-                    metadata={"threat_detected": result.get("threat_detected", False)},
-                    processing_time=time.time() - start_time
-                )
+            # Trace this agent execution
+            with tracer.trace_agent(agent_name, agent_name.title()) as agent_execution:
+                if agent_execution:
+                    tracer.set_agent_summaries(input_summary=query[:200])
+                
+                # Execute based on agent type with proper method calls
+                if agent_name == "trustshield":
+                    with tracer.trace_tool('fraud_scan', query):
+                        result = agent.scan(query)
+                    
+                    if agent_execution:
+                        tracer.set_agent_summaries(output_summary=result.get("analysis", "")[:200])
+                        tracer.add_sources(result.get("citations", []))
+                        tracer.set_agent_confidence(result.get("confidence", 0.5))
+                    
+                    return AgentResult(
+                        agent_type=agent_name,
+                        success=True,
+                        response=result.get("analysis", "No analysis provided"),
+                        confidence=result.get("confidence", 0.5),
+                        sources=result.get("citations", []),
+                        metadata={"threat_detected": result.get("threat_detected", False)},
+                        processing_time=time.time() - start_time
+                    )
             
-            elif agent_name == "offerpilot":
-                result = agent.process_query(query, None)  # No budget specified
-                
-                # Use the response text from OfferPilotResponse
-                response_text = result.response
-                
-                # Get UI cards from metadata
-                ui_cards = result.metadata.get("ui_cards", [])
-                prequal = result.metadata.get("prequalification", {})
-                disclosures = result.metadata.get("disclosures", [])
-                
-                # Add disclosure information if available
-                if disclosures:
-                    response_text += f"\n\n**Important Terms:**\n"
-                    for disclosure in disclosures[:2]:  # Limit to first 2
-                        response_text += f"• {disclosure}\n"
-                
-                sources = []  # OfferPilotResponse doesn't have citations in the old format
-                
-                return AgentResult(
-                    agent_type=agent_name,
-                    success=True,
-                    response=response_text,
-                    confidence=0.8,  # Default confidence for structured responses
-                    sources=sources,
-                    metadata={"offers_found": len(ui_cards), "prequalification": prequal},
-                    processing_time=time.time() - start_time
-                )
+                elif agent_name == "offerpilot":
+                    with tracer.trace_tool('product_search', query):
+                        result = agent.process_query(query, None)  # No budget specified
+                    
+                    # Use the response text from OfferPilotResponse
+                    response_text = result.response
+                    
+                    # Get UI cards from metadata
+                    ui_cards = result.metadata.get("ui_cards", [])
+                    prequal = result.metadata.get("prequalification", {})
+                    disclosures = result.metadata.get("disclosures", [])
+                    
+                    # Add disclosure information if available
+                    if disclosures:
+                        response_text += f"\n\n**Important Terms:**\n"
+                        for disclosure in disclosures[:2]:  # Limit to first 2
+                            response_text += f"• {disclosure}\n"
+                    
+                    sources = []  # OfferPilotResponse doesn't have citations in the old format
+                    
+                    if agent_execution:
+                        tracer.set_agent_summaries(output_summary=response_text[:200])
+                        tracer.set_agent_confidence(0.8)
+                    
+                    return AgentResult(
+                        agent_type=agent_name,
+                        success=True,
+                        response=response_text,
+                        confidence=0.8,  # Default confidence for structured responses
+                        sources=sources,
+                        metadata={"offers_found": len(ui_cards), "prequalification": prequal},
+                        processing_time=time.time() - start_time
+                    )
             
             
-            else:
-                # Generic agent execution for other agents with proper method mapping
-                result = None
-                response_text = ""
-                sources = []
-                confidence = 0.7
-                
-                # Try different method names based on agent
-                if agent_name == "narrator":
-                    result = agent.process_question(query)
-                    # Handle new NarratorResponse format with insights and UI cards
-                    response_text = result.response
-                    ui_cards = result.metadata.get("ui_cards", [])
-                    sources = result.metadata.get("sources", [])
-                    
-                    # Add insights summary to response if available
-                    if ui_cards:
-                        insights_count = len(ui_cards)
-                        kpis_analyzed = result.metadata.get("kpis_analyzed", 0)
-                        response_text += f"\n\n💡 **Analysis Summary:** {insights_count} key insights from {kpis_analyzed} KPIs"
-                    
-                elif agent_name == "dispute":
-                    result = agent.process_dispute(query)
-                    
-                    # Handle new DisputeResponse format
-                    response_text = result.response
-                    ui_cards = result.metadata.get("ui_cards", [])
-                    status = result.metadata.get("status", {})
-                    handoffs = result.metadata.get("handoffs", [])
-                    
-                    # Add status information to response
-                    if status:
-                        response_text += f"\n\n**Status:** {status.get('stage', 'unknown').replace('_', ' ').title()}"
-                        response_text += f" (Likelihood: {status.get('likelihood', 'unknown')})"
-                        if not status.get('eligible', True):
-                            response_text += f"\n⚠️ {status.get('eligibility_reason', 'Eligibility concerns')}"
-                    
-                    sources = []  # Enhanced dispute doesn't use traditional sources
-                    confidence = 0.8
-                        
-                elif agent_name == "collections":
-                    if hasattr(agent, 'process_hardship'):
-                        result = agent.process_hardship(query)
-                    elif hasattr(agent, 'process_query'):
-                        result = agent.process_query(query)
-                    else:
-                        result = {"response": "Collections agent processing not implemented", "confidence": 0.5}
-                    
-                    if isinstance(result, dict):
-                        response_text = result.get('response', str(result))
-                        confidence = result.get('confidence', 0.7)
-                        sources = result.get('sources', [])
-                    else:
-                        response_text = str(result)
-                        
-                elif agent_name == "contracts":
-                    # Use enhanced contract analysis with systematic clause extraction
-                    result = agent.analyze_contract(query)
-                    
-                    # Handle new ContractResponse format
-                    response_text = result.response
-                    ui_cards = result.metadata.get("ui_cards", [])
-                    risk_flags = result.metadata.get("risk_flags", [])
-                    handoffs = result.metadata.get("handoffs", [])
-                    needs_legal_review = result.metadata.get("needs_legal_review", False)
-                    
-                    # Add risk flags to response if present
-                    if risk_flags:
-                        high_risks = [f for f in risk_flags if f.get("severity") == "high"]
-                        if high_risks:
-                            response_text += f"\n\n⚠️ **High Priority Risks:** {len(high_risks)} identified"
-                        if needs_legal_review:
-                            response_text += "\n📋 **Legal Review Required**"
-                    
-                    sources = []  # Enhanced contracts doesn't use traditional sources
-                    confidence = 0.8
-                        
-                elif agent_name == "devcopilot":
-                    try:
-                        result = agent.process_request(query)
-                        response_text = result.response
-                        confidence = 0.8
-                        
-                        # Extract sources from metadata
-                        sources = result.metadata.get('sources', [])
-                        
-                    except Exception as e:
-                        logger.error(f"DevCopilot error: {e}")
-                        response_text = f"DevCopilot processing failed: {str(e)}"
-                        confidence = 0.3
-                        sources = []
-                        
-                elif agent_name == "carecredit":
-                    if hasattr(agent, 'process_care_query'):
-                        result = agent.process_care_query(query)
-                    elif hasattr(agent, 'process_query'):
-                        result = agent.process_query(query)
-                    else:
-                        result = {"response": "CareCredit processing not implemented", "confidence": 0.5}
-                        
-                    if isinstance(result, dict):
-                        response_text = result.get('response', str(result))
-                        confidence = result.get('confidence', 0.7)
-                        sources = result.get('sources', [])
-                    else:
-                        response_text = str(result)
-                        
                 else:
-                    # Fallback for unknown agents
-                    if hasattr(agent, 'process_query'):
-                        result = agent.process_query(query)
-                    elif hasattr(agent, 'process'):
-                        result = agent.process(query)
-                    else:
-                        result = {"response": f"Agent {agent_name} processing not implemented", "confidence": 0.3}
+                    # Generic agent execution for other agents with proper method mapping
+                    result = None
+                    response_text = ""
+                    sources = []
+                    confidence = 0.7
                     
-                    # Handle different result types
-                    if hasattr(result, 'response'):
+                    # Try different method names based on agent
+                    if agent_name == "narrator":
+                        result = agent.process_question(query)
+                        # Handle new NarratorResponse format with insights and UI cards
                         response_text = result.response
-                        confidence = getattr(result, 'confidence', 0.7)
-                        sources = getattr(result, 'sources', [])
-                    elif isinstance(result, dict):
-                        response_text = result.get('response', str(result))
-                        confidence = result.get('confidence', 0.7)
-                        sources = result.get('sources', [])
+                        ui_cards = result.metadata.get("ui_cards", [])
+                        sources = result.metadata.get("sources", [])
+                        
+                        # Add insights summary to response if available
+                        if ui_cards:
+                            insights_count = len(ui_cards)
+                            kpis_analyzed = result.metadata.get("kpis_analyzed", 0)
+                            response_text += f"\n\n💡 **Analysis Summary:** {insights_count} key insights from {kpis_analyzed} KPIs"
+                        
+                    elif agent_name == "dispute":
+                        result = agent.process_dispute(query)
+                        
+                        # Handle new DisputeResponse format
+                        response_text = result.response
+                        ui_cards = result.metadata.get("ui_cards", [])
+                        status = result.metadata.get("status", {})
+                        handoffs = result.metadata.get("handoffs", [])
+                        
+                        # Add status information to response
+                        if status:
+                            response_text += f"\n\n**Status:** {status.get('stage', 'unknown').replace('_', ' ').title()}"
+                            response_text += f" (Likelihood: {status.get('likelihood', 'unknown')})"
+                            if not status.get('eligible', True):
+                                response_text += f"\n⚠️ {status.get('eligibility_reason', 'Eligibility concerns')}"
+                        
+                        sources = []  # Enhanced dispute doesn't use traditional sources
+                        confidence = 0.8
+                            
+                    elif agent_name == "collections":
+                        if hasattr(agent, 'process_hardship'):
+                            result = agent.process_hardship(query)
+                        elif hasattr(agent, 'process_query'):
+                            result = agent.process_query(query)
+                        else:
+                            result = {"response": "Collections agent processing not implemented", "confidence": 0.5}
+                        
+                        if isinstance(result, dict):
+                            response_text = result.get('response', str(result))
+                            confidence = result.get('confidence', 0.7)
+                            sources = result.get('sources', [])
+                        else:
+                            response_text = str(result)
+                            
+                    elif agent_name == "contracts":
+                        # Use enhanced contract analysis with systematic clause extraction
+                        result = agent.analyze_contract(query)
+                        
+                        # Handle new ContractResponse format
+                        response_text = result.response
+                        ui_cards = result.metadata.get("ui_cards", [])
+                        risk_flags = result.metadata.get("risk_flags", [])
+                        handoffs = result.metadata.get("handoffs", [])
+                        needs_legal_review = result.metadata.get("needs_legal_review", False)
+                        
+                        # Add risk flags to response if present
+                        if risk_flags:
+                            high_risks = [f for f in risk_flags if f.get("severity") == "high"]
+                            if high_risks:
+                                response_text += f"\n\n⚠️ **High Priority Risks:** {len(high_risks)} identified"
+                            if needs_legal_review:
+                                response_text += "\n📋 **Legal Review Required**"
+                        
+                        sources = []  # Enhanced contracts doesn't use traditional sources
+                        confidence = 0.8
+                            
+                    elif agent_name == "devcopilot":
+                        try:
+                            result = agent.process_request(query)
+                            response_text = result.response
+                            confidence = 0.8
+                            
+                            # Extract sources from metadata
+                            sources = result.metadata.get('sources', [])
+                            
+                        except Exception as e:
+                            logger.error(f"DevCopilot error: {e}")
+                            response_text = f"DevCopilot processing failed: {str(e)}"
+                            confidence = 0.3
+                            sources = []
+                            
+                    elif agent_name == "carecredit":
+                        if hasattr(agent, 'process_care_query'):
+                            result = agent.process_care_query(query)
+                        elif hasattr(agent, 'process_query'):
+                            result = agent.process_query(query)
+                        else:
+                            result = {"response": "CareCredit processing not implemented", "confidence": 0.5}
+                            
+                        if isinstance(result, dict):
+                            response_text = result.get('response', str(result))
+                            confidence = result.get('confidence', 0.7)
+                            sources = result.get('sources', [])
+                        else:
+                            response_text = str(result)
+                            
                     else:
-                        response_text = str(result)
-                
-                # Build metadata for agents with enhanced responses
-                metadata = {}
-                if agent_name == "narrator" and hasattr(result, 'metadata'):
-                    metadata = result.metadata
-                elif agent_name in ["dispute", "collections", "carecredit"] and hasattr(result, 'metadata'):
-                    metadata = result.metadata
+                        # Fallback for unknown agents
+                        if hasattr(agent, 'process_query'):
+                            result = agent.process_query(query)
+                        elif hasattr(agent, 'process'):
+                            result = agent.process(query)
+                        else:
+                            result = {"response": f"Agent {agent_name} processing not implemented", "confidence": 0.3}
+                        
+                        # Handle different result types
+                        if hasattr(result, 'response'):
+                            response_text = result.response
+                            confidence = getattr(result, 'confidence', 0.7)
+                            sources = getattr(result, 'sources', [])
+                        elif isinstance(result, dict):
+                            response_text = result.get('response', str(result))
+                            confidence = result.get('confidence', 0.7)
+                            sources = result.get('sources', [])
+                        else:
+                            response_text = str(result)
+                    
+                    # Build metadata for agents with enhanced responses
+                    metadata = {}
+                    if agent_name == "narrator" and hasattr(result, 'metadata'):
+                        metadata = result.metadata
+                    elif agent_name in ["dispute", "collections", "carecredit"] and hasattr(result, 'metadata'):
+                        metadata = result.metadata
                 
                 return AgentResult(
                     agent_type=agent_name,

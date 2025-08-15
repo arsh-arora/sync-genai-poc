@@ -2,6 +2,7 @@ import React from 'react';
 import { Message } from '../types';
 import { AGENTS } from '../config/agents';
 import MarkdownRenderer from './MarkdownRenderer';
+import AgentTheater from './AgentTheater';
 
 interface ChatMessageProps {
   message: Message;
@@ -68,6 +69,19 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
               </span>
             )}
           </div>
+
+          {/* Agent Theater - Show execution trace */}
+          {message.agent_trace && (
+            <AgentTheater 
+              trace={message.agent_trace} 
+              isVisible={true} 
+              compact={true}
+              onExpandToPanel={() => {
+                // This would need to be passed down from App component to work
+                console.log('Switch to Agent Theater panel');
+              }}
+            />
+          )}
 
           {/* Message Content */}
           <MarkdownRenderer content={message.content} />

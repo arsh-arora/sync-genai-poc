@@ -20,6 +20,7 @@ export interface Message {
   image_format?: string | null;
   timestamp: Date;
   pdfData?: PdfData;
+  agent_trace?: AgentTrace;
 }
 
 export interface DocumentAssessment {
@@ -58,6 +59,7 @@ export interface ChatResponse {
   document_assessment?: DocumentAssessment | null;
   image_data?: string | null;
   image_format?: string | null;
+  agent_trace?: AgentTrace;
 }
 
 export interface UploadedPdf {
@@ -69,3 +71,37 @@ export interface UploadedPdf {
 }
 
 export type UserType = 'consumer' | 'partner';
+
+// Agent Theater Types
+export interface ToolCall {
+  tool_name: string;
+  duration_ms: number;
+  status: 'success' | 'error' | 'timeout';
+  input_summary?: string;
+  output_summary?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface AgentExecution {
+  agent_name: string;
+  display_name: string;
+  started_at: number;
+  duration_ms: number;
+  status: 'success' | 'error' | 'timeout';
+  tool_calls: ToolCall[];
+  input_summary?: string;
+  output_summary?: string;
+  confidence?: number;
+  sources_used?: string[];
+}
+
+export interface AgentTrace {
+  execution_id: string;
+  total_duration_ms: number;
+  agent_executions: AgentExecution[];
+  routing_decision?: {
+    primary_agent: string;
+    confidence: number;
+    fallback_used?: string;
+  };
+}

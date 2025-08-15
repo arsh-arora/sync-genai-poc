@@ -253,6 +253,7 @@ class ChatResponse(BaseModel):
     document_assessment: Optional[dict] = None
     image_data: Optional[str] = None
     image_format: Optional[str] = None
+    agent_trace: Optional[dict] = None
 
 class OfferRequest(BaseModel):
     query: str
