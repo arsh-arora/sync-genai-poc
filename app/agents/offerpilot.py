@@ -6,6 +6,8 @@ Conversational shopping with grounded products, promo financing, and credit pre-
 import json
 import logging
 import math
+import hashlib
+import yaml
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Union
@@ -18,34 +20,32 @@ from app.tools.tavily_search import web_search_into_docstore
 
 logger = logging.getLogger(__name__)
 
-# Pydantic models for strict output schema enforcement
-class FinancingOffer(BaseModel):
-    id: str
+# Enhanced Pydantic models for rules-aware financing
+class PromoOffer(BaseModel):
+    type: str  # "equal_payment" or "deferred_interest"
     months: int
-    apr: float
-    monthly: float
-    total_cost: float
-    disclaimer: str
+    est_monthly: Optional[float] = None
+    disclosure_key: str
+    min_purchase: int = 0
 
-class ProductItem(BaseModel):
-    sku: str
+class ProductCard(BaseModel):
     title: str
-    price: float
-    merchant: str
-    offers: List[FinancingOffer]
+    price: int  # in cents
+    partner: str
+    promos: List[PromoOffer]
+    warnings: List[str] = []
 
 class PrequalResult(BaseModel):
-    eligible: bool
-    reason: str
+    status: str  # "eligible", "uncertain", "ineligible"
+    explanation: str
+
+class OfferPilotResponse(BaseModel):
+    response: str  # 3-5 lines summary
+    metadata: Dict[str, Any]  # Contains ui_cards, disclosures, handoffs
 
 class Citation(BaseModel):
     source: str
     snippet: str
-
-class OfferPilotResponse(BaseModel):
-    items: List[ProductItem]
-    prequal: PrequalResult
-    citations: List[Citation]
 
 @dataclass
 class UserStub:
@@ -61,29 +61,88 @@ class OfferPilot:
     Marketplace discovery agent with financing options and credit pre-qualification
     """
     
-    def __init__(self, docstore=None, embedder=None, retriever=None):
-        """Initialize OfferPilot with RAG components for terms retrieval"""
+    def __init__(self, docstore=None, embedder=None, retriever=None, rules_loader=None):
+        """Initialize OfferPilot with RAG components and rules-based financing"""
         self.docstore = docstore
         self.embedder = embedder
         self.retriever = retriever
+        self.rules_loader = rules_loader
+        
+        # Load rules from centralized loader or fallback to local loading
+        if rules_loader:
+            self.promotions_rules = rules_loader.get_rules('promotions') or {}
+            self.disclosures_rules = rules_loader.get_rules('disclosures') or {}
+            self.prequalification_rules = rules_loader.get_rules('prequalification') or {}
+            logger.info("OfferPilot loaded rules from centralized rules loader")
+        else:
+            self._load_rules()
         
         # Load data files
         self._load_marketplace_data()
         self._load_financing_data()
     
-    def _load_marketplace_data(self):
-        """Load marketplace catalog from JSON file"""
+    def _load_rules(self):
+        """Load rules from synchrony-demo-rules-repo"""
         try:
-            catalog_path = Path("app/data/marketplace_catalog.json")
-            with open(catalog_path, 'r') as f:
-                data = json.load(f)
-                self.marketplace_products = data["products"]
-                self.marketplace_metadata = data["metadata"]
-            logger.info(f"Loaded {len(self.marketplace_products)} products from marketplace catalog")
+            rules_base = Path("synchrony-demo-rules-repo/rules")
+            
+            # Load promotions rules
+            with open(rules_base / "promotions.yml", 'r') as f:
+                self.promotions_rules = yaml.safe_load(f)
+            
+            # Load disclosures
+            with open(rules_base / "disclosures.yml", 'r') as f:
+                self.disclosures_rules = yaml.safe_load(f)
+            
+            # Load prequalification rules
+            with open(rules_base / "prequalification.yml", 'r') as f:
+                self.prequalification_rules = yaml.safe_load(f)
+                
+            logger.info("Loaded rules from synchrony-demo-rules-repo")
         except Exception as e:
-            logger.error(f"Failed to load marketplace catalog: {e}")
+            logger.error(f"Failed to load rules: {e}")
+            # Fallback to empty rules
+            self.promotions_rules = {"partners": [], "generic_defaults": {"equal_payment_months": [6, 12, 18], "deferred_interest_months": [6, 12]}}
+            self.disclosures_rules = {"disclosures": {}}
+            self.prequalification_rules = {"demo_scoring": {"buckets": []}}
+    
+    def _load_marketplace_data(self):
+        """Load marketplace catalog from rules repo"""
+        try:
+            # First try centralized rules loader
+            if self.rules_loader:
+                products_data = self.rules_loader.get_fixture('products')
+                merchants_data = self.rules_loader.get_fixture('merchants')
+                
+                if products_data and merchants_data:
+                    self.marketplace_products = products_data
+                    self.merchants_data = {m["partner_id"]: m for m in merchants_data}
+                    logger.info(f"Loaded {len(self.marketplace_products)} products from centralized rules loader")
+                    return
+            
+            # Fallback to direct file access
+            products_path = Path("synchrony-demo-rules-repo/fixtures/products.json")
+            merchants_path = Path("synchrony-demo-rules-repo/fixtures/merchants.json")
+            
+            if products_path.exists():
+                with open(products_path, 'r') as f:
+                    self.marketplace_products = json.load(f)
+                with open(merchants_path, 'r') as f:
+                    self.merchants_data = {m["partner_id"]: m for m in json.load(f)}
+                logger.info(f"Loaded {len(self.marketplace_products)} products from rules repo")
+            else:
+                # Fallback to original catalog
+                catalog_path = Path("app/data/marketplace_catalog.json")
+                with open(catalog_path, 'r') as f:
+                    data = json.load(f)
+                    self.marketplace_products = data["products"]
+                    self.merchants_data = {}
+                logger.info(f"Loaded {len(self.marketplace_products)} products from fallback catalog")
+                
+        except Exception as e:
+            logger.error(f"Failed to load marketplace data: {e}")
             self.marketplace_products = []
-            self.marketplace_metadata = {}
+            self.merchants_data = {}
     
     def _load_financing_data(self):
         """Load financing offers from JSON file"""
@@ -101,87 +160,62 @@ class OfferPilot:
             self.merchant_offers = {}
             self.offers_metadata = {}
     
-    def process_query(self, query: str, budget: Optional[float] = None, user_type: str = "consumer") -> OfferPilotResponse:
+    def process_query(self, query: str, budget: Optional[float] = None, user_type: str = "consumer", user_id: str = "demo_user") -> OfferPilotResponse:
         """
-        Main processing pipeline for OfferPilot
+        Enhanced rules-aware processing pipeline for OfferPilot
         
         Args:
             query: User search query
-            budget: Optional budget constraint
-            user_type: consumer or partner (for logging only)
+            budget: Optional budget constraint  
+            user_type: consumer or partner
+            user_id: User identifier for deterministic prequalification
             
         Returns:
-            OfferPilotResponse with products, financing, and pre-qualification
+            OfferPilotResponse with structured UI cards, disclosures, and handoffs
         """
         try:
-            logger.info(f"Processing OfferPilot query: {query}, budget: {budget}, user_type: {user_type}")
+            logger.info(f"Processing rules-aware OfferPilot query: {query}, user_type: {user_type}")
             
-            # Step 1: Search marketplace
-            search_results = self.marketplace_search(query, max_results=8)
-            logger.info(f"Found {len(search_results)} products from marketplace search")
+            # Step 1: Search and filter products
+            matching_products = self._search_products(query, budget)
+            if not matching_products:
+                return self._empty_response("No products found matching your query.")
             
-            # Step 2: Filter by budget if provided
-            if budget:
-                search_results = [p for p in search_results if p["price"] <= budget]
-                logger.info(f"Filtered to {len(search_results)} products within budget ${budget}")
+            # Step 2: Generate product cards with financing options
+            ui_cards = []
+            all_disclosures = set()
             
-            # Step 3: Get financing offers for each product
-            enriched_items = []
-            for product in search_results[:5]:  # Top 5 products
-                offers = self.offers_lookup(product["merchant"], product["price"])
-                
-                # Step 4: Simulate payments for each offer
-                financing_offers = []
-                for offer in offers:
-                    payment_sim = self.payments_simulate(
-                        product["price"], 
-                        offer["months"], 
-                        offer["apr"]
-                    )
-                    
-                    financing_offers.append(FinancingOffer(
-                        id=offer["id"],
-                        months=offer["months"],
-                        apr=offer["apr"],
-                        monthly=payment_sim["monthly"],
-                        total_cost=payment_sim["total_cost"],
-                        disclaimer=offer["disclaimer"]
-                    ))
-                
-                enriched_items.append(ProductItem(
-                    sku=product["sku"],
-                    title=product["title"],
-                    price=product["price"],
-                    merchant=product["merchant"],
-                    offers=financing_offers
-                ))
+            for product in matching_products[:3]:  # Top 3 products
+                card, disclosures = self._create_product_card(product)
+                ui_cards.append(card)
+                all_disclosures.update(disclosures)
             
-            # Step 5: Rank by relevance × affordability × promo fit
-            ranked_items = self._rank_items(enriched_items, query, budget)
+            # Step 3: Deterministic prequalification
+            if ui_cards:
+                avg_price = sum(card.price for card in ui_cards) / len(ui_cards)
+                prequal = self._deterministic_prequalification(user_id, avg_price)
+            else:
+                prequal = PrequalResult(status="ineligible", explanation="No products available")
             
-            # Step 6: Get promotional terms citations
-            citations = self._get_promotional_citations(ranked_items)
+            # Step 4: Generate response summary
+            response_text = self._generate_response_summary(ui_cards, prequal)
             
-            # Step 7: Credit pre-qualification
-            user_stub = UserStub()  # Mock user data
-            prequal = self.credit_quickscreen(user_stub)
+            # Step 5: Check for handoffs
+            handoffs = self._detect_handoffs(query)
             
             return OfferPilotResponse(
-                items=ranked_items,
-                prequal=PrequalResult(
-                    eligible=prequal["eligible"],
-                    reason=prequal["reason"]
-                ),
-                citations=citations
+                response=response_text,
+                metadata={
+                    "ui_cards": [card.dict() for card in ui_cards],
+                    "disclosures": list(all_disclosures),
+                    "handoffs": handoffs,
+                    "prequalification": prequal.dict()
+                }
             )
             
         except Exception as e:
             logger.error(f"Error in OfferPilot processing: {e}")
-            return OfferPilotResponse(
-                items=[],
-                prequal=PrequalResult(eligible=False, reason="System error occurred"),
-                citations=[]
-            )
+            return self._empty_response("Unable to process your request. Please try again.")
     
     def marketplace_search(self, query: str, max_results: int = 8) -> List[Dict[str, Any]]:
         """
@@ -208,14 +242,16 @@ class OfferPilot:
             if query_lower in product["category"].lower():
                 score += 2
             
-            # Features matching
-            for feature in product["features"]:
-                if any(word in feature.lower() for word in query_lower.split()):
-                    score += 1
+            # Features matching (if features field exists)
+            if "features" in product and product["features"]:
+                for feature in product["features"]:
+                    if any(word in feature.lower() for word in query_lower.split()):
+                        score += 1
             
-            # Description matching
-            if any(word in product["description"].lower() for word in query_lower.split()):
-                score += 1
+            # Description matching (if description field exists)
+            if "description" in product and product["description"]:
+                if any(word in product["description"].lower() for word in query_lower.split()):
+                    score += 1
             
             if score > 0:
                 product_copy = product.copy()
@@ -356,7 +392,7 @@ class OfferPilot:
             "score": score
         }
     
-    def _rank_items(self, items: List[ProductItem], query: str, budget: Optional[float]) -> List[ProductItem]:
+    def _rank_items(self, items: List[ProductCard], query: str, budget: Optional[float]) -> List[ProductCard]:
         """
         Rank items by relevance × affordability × promo fit
         
@@ -377,20 +413,21 @@ class OfferPilot:
             
             # Affordability score (lower price = higher score)
             if budget:
-                affordability = max(0, (budget - item.price) / budget)
+                budget_cents = budget * 100
+                affordability = max(0, (budget_cents - item.price) / budget_cents)
             else:
                 # Use relative affordability within result set
                 max_price = max(i.price for i in items)
-                affordability = 1 - (item.price / max_price)
+                affordability = 1 - (item.price / max_price) if max_price > 0 else 0
             
-            # Promo fit score (0% APR offers get higher score)
+            # Promo fit score (Equal Payment and DI both score well)
             promo_score = 0
-            if item.offers:
-                best_offer = min(item.offers, key=lambda x: x.apr)
-                if best_offer.apr == 0:
-                    promo_score = 1.0
-                else:
-                    promo_score = max(0, (25 - best_offer.apr) / 25)  # Scale from 25% APR
+            if item.promos:
+                # Score based on number of promo options available
+                promo_score = min(1.0, len(item.promos) * 0.3)
+                # Bonus for having equal payment options (easier to understand)
+                if any(promo.type == "equal_payment" for promo in item.promos):
+                    promo_score += 0.2
             
             # Combined score
             combined_score = (relevance * 0.4 + affordability * 0.3 + promo_score * 0.3)
@@ -402,7 +439,7 @@ class OfferPilot:
         
         return [item for item, score in scored_items]
     
-    def _get_promotional_citations(self, items: List[ProductItem]) -> List[Citation]:
+    def _get_promotional_citations(self, items: List[ProductCard]) -> List[Citation]:
         """
         Get promotional terms citations from knowledge base
         
@@ -422,11 +459,11 @@ class OfferPilot:
             # Create query for promotional terms
             offer_types = set()
             for item in items:
-                for offer in item.offers:
-                    if offer.apr == 0:
-                        offer_types.add("0% APR promotional financing")
-                    else:
-                        offer_types.add("standard APR financing")
+                for promo in item.promos:
+                    if promo.type == "deferred_interest":
+                        offer_types.add("0% APR deferred interest financing")
+                    elif promo.type == "equal_payment":
+                        offer_types.add("equal payment financing")
             
             if offer_types:
                 query = f"promotional terms {' '.join(offer_types)}"
@@ -469,6 +506,198 @@ class OfferPilot:
             logger.error(f"Error retrieving promotional citations: {e}")
         
         return citations
+    
+    # New rules-aware helper methods
+    def _search_products(self, query: str, budget: Optional[float] = None) -> List[Dict[str, Any]]:
+        """Search products using existing marketplace_search but with budget filter"""
+        results = self.marketplace_search(query, max_results=5)
+        
+        if budget:
+            # Convert budget from dollars to cents for comparison
+            budget_cents = int(budget * 100)
+            results = [p for p in results if p.get("price", 0) <= budget_cents]
+        
+        return results
+    
+    def _create_product_card(self, product: Dict[str, Any]) -> tuple[ProductCard, List[str]]:
+        """Create a ProductCard with financing options based on rules"""
+        partner_id = product.get("partner_id", "unknown")
+        category = product.get("category", "")
+        price = product.get("price", 0)
+        
+        # Get applicable promotions for this partner/category
+        promos = []
+        disclosures_used = []
+        warnings = []
+        
+        # Check partner-specific promotions
+        partner_promos = self._get_partner_promotions(partner_id, category, price)
+        
+        if partner_promos:
+            for promo_config in partner_promos:
+                promo = PromoOffer(
+                    type=promo_config["type"],
+                    months=promo_config["months"],
+                    disclosure_key=promo_config["disclosure_key"],
+                    min_purchase=promo_config["min_purchase"]
+                )
+                
+                # Calculate estimated monthly payment
+                if promo_config["type"] == "equal_payment":
+                    promo.est_monthly = price / promo_config["months"]
+                else:  # deferred_interest
+                    promo.est_monthly = 0  # No payments during promo period
+                    warnings.append("Deferred Interest: Interest accrues if not paid in full during promotional period")
+                
+                promos.append(promo)
+                disclosures_used.append(promo_config["disclosure_key"])
+        else:
+            # Use generic defaults
+            defaults = self.promotions_rules["generic_defaults"]
+            
+            # Add Equal Payment options
+            for months in defaults["equal_payment_months"]:
+                if price >= 10000:  # Minimum $100 threshold
+                    promos.append(PromoOffer(
+                        type="equal_payment",
+                        months=months,
+                        est_monthly=price / months,
+                        disclosure_key="equal_payment_generic"
+                    ))
+                    disclosures_used.append("equal_payment_generic")
+            
+            # Add Deferred Interest options  
+            for months in defaults["deferred_interest_months"]:
+                if price >= 10000:
+                    promos.append(PromoOffer(
+                        type="deferred_interest", 
+                        months=months,
+                        est_monthly=0,
+                        disclosure_key="deferred_interest_generic"
+                    ))
+                    disclosures_used.append("deferred_interest_generic")
+                    warnings.append("DI accrues if not paid in full within promotional period")
+        
+        # Get merchant name
+        merchant_name = self.merchants_data.get(partner_id, {}).get("name", partner_id.title())
+        
+        card = ProductCard(
+            title=product.get("title", ""),
+            price=price,
+            partner=merchant_name,
+            promos=promos,
+            warnings=warnings
+        )
+        
+        return card, disclosures_used
+    
+    def _get_partner_promotions(self, partner_id: str, category: str, price: int) -> List[Dict[str, Any]]:
+        """Get partner-specific promotions based on rules"""
+        partner_config = None
+        for partner in self.promotions_rules["partners"]:
+            if partner["partner_id"] == partner_id:
+                partner_config = partner
+                break
+        
+        if not partner_config:
+            return []
+        
+        # Check category eligibility
+        if category not in partner_config.get("categories_allowed", []):
+            return []
+        
+        # Filter promotions by minimum purchase
+        applicable_promos = []
+        for promo in partner_config.get("promos", []):
+            if price >= promo.get("min_purchase", 0):
+                applicable_promos.append(promo)
+        
+        return applicable_promos
+    
+    def _deterministic_prequalification(self, user_id: str, price: float) -> PrequalResult:
+        """Deterministic prequalification based on stable hash"""
+        # Create stable hash from user_id and price
+        hash_input = f"{user_id}:{int(price)}"
+        hash_value = int(hashlib.md5(hash_input.encode()).hexdigest()[:8], 16)
+        
+        # Use hash to determine bucket
+        buckets = self.prequalification_rules["demo_scoring"]["buckets"]
+        
+        for bucket in buckets:
+            if price <= bucket["price_upper"]:
+                # Use hash to add some variation within bucket
+                if bucket["name"] == "eligible":
+                    # 80% eligible, 20% uncertain within eligible range
+                    status = "eligible" if hash_value % 10 < 8 else "uncertain"
+                elif bucket["name"] == "uncertain":
+                    # 60% uncertain, 40% eligible within uncertain range  
+                    status = "uncertain" if hash_value % 10 < 6 else "eligible"
+                else:  # ineligible
+                    status = "ineligible"
+                    
+                return PrequalResult(
+                    status=status,
+                    explanation=bucket["explanation"]
+                )
+        
+        # Fallback
+        return PrequalResult(status="ineligible", explanation="Above demo threshold")
+    
+    def _generate_response_summary(self, ui_cards: List[ProductCard], prequal: PrequalResult) -> str:
+        """Generate 3-5 line response summary"""
+        if not ui_cards:
+            return "No products found matching your criteria."
+        
+        best_card = ui_cards[0]
+        best_promo = best_card.promos[0] if best_card.promos else None
+        
+        summary = f"Found {len(ui_cards)} great options! "
+        summary += f"Top pick: {best_card.title} for ${best_card.price/100:.2f} from {best_card.partner}. "
+        
+        if best_promo:
+            if best_promo.type == "equal_payment":
+                summary += f"Available: {best_promo.months}-month equal payments of ${best_promo.est_monthly/100:.2f}/month. "
+            else:
+                summary += f"Available: {best_promo.months}-month deferred interest (0% if paid in full). "
+        
+        if prequal.status == "eligible":
+            summary += "✅ You're prequalified!"
+        elif prequal.status == "uncertain": 
+            summary += "Additional info may be needed for approval."
+        else:
+            summary += "Higher amounts may require additional review."
+            
+        return summary
+    
+    def _detect_handoffs(self, query: str) -> List[str]:
+        """Detect if query should be handed off to other agents"""
+        handoffs = []
+        
+        query_lower = query.lower()
+        
+        # Check for dispute-related terms
+        dispute_terms = ["double charged", "charged twice", "dispute", "chargeback", "refund", "unauthorized"]
+        if any(term in query_lower for term in dispute_terms):
+            handoffs.append("dispute")
+        
+        # Check for collections-related terms  
+        collections_terms = ["can't pay", "hardship", "payment plan", "financial difficulty"]
+        if any(term in query_lower for term in collections_terms):
+            handoffs.append("collections")
+        
+        return handoffs
+    
+    def _empty_response(self, message: str) -> OfferPilotResponse:
+        """Generate empty response with error message"""
+        return OfferPilotResponse(
+            response=message,
+            metadata={
+                "ui_cards": [],
+                "disclosures": [],
+                "handoffs": [],
+                "prequalification": {"status": "ineligible", "explanation": "No evaluation performed"}
+            }
+        )
 
 # Golden-path tests
 def test_offerpilot():

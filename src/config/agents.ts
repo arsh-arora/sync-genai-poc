@@ -73,7 +73,7 @@ export const AGENTS: Record<string, Agent> = {
   }
 };
 
-// Define which agents are available for each persona
+// Define which agents are available for each persona (matching backend initialization)
 export const PERSONA_AGENTS: Record<UserType, string[]> = {
   consumer: ['smart', 'offerpilot', 'dispute', 'collections', 'contracts', 'carecredit', 'narrator'],
   partner: ['smart', 'devcopilot', 'narrator', 'imagegen', 'contracts', 'offerpilot', 'carecredit'] // Core + Contextual
@@ -98,19 +98,18 @@ export const PARTNER_AGENT_DESCRIPTIONS: Record<string, string> = {
 
 // Helper function to get available agents for a persona
 export const getAvailableAgents = (userType: UserType): Record<string, Agent> => {
-  const availableAgentKeys = PERSONA_AGENTS[userType];
-  const filteredAgents: Record<string, Agent> = {};
+  // Show all agents initially - backend will filter based on detected persona
+  // This allows users to try any agent and let the system auto-detect context
+  const allAgents: Record<string, Agent> = {};
   
-  availableAgentKeys.forEach(key => {
-    if (AGENTS[key]) {
-      // Use Partner-specific description if available
-      const agent = { ...AGENTS[key] };
-      if (userType === 'partner' && PARTNER_AGENT_DESCRIPTIONS[key]) {
-        agent.tooltip = PARTNER_AGENT_DESCRIPTIONS[key];
-      }
-      filteredAgents[key] = agent;
+  Object.entries(AGENTS).forEach(([key, agent]) => {
+    // Use Partner-specific description if available
+    const agentCopy = { ...agent };
+    if (userType === 'partner' && PARTNER_AGENT_DESCRIPTIONS[key]) {
+      agentCopy.tooltip = PARTNER_AGENT_DESCRIPTIONS[key];
     }
+    allAgents[key] = agentCopy;
   });
   
-  return filteredAgents;
+  return allAgents;
 };

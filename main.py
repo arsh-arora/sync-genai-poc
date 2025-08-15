@@ -26,13 +26,14 @@ from app.tools.tavily_search import web_search_into_docstore, WebDisabled
 from app.router import route
 from app.agents.trustshield import TrustShield
 from app.agents.offerpilot import OfferPilot
-from app.agents.dispute import DisputeCopilot
+from app.agents.dispute_reg_e import DisputeCopilot
 from app.agents.collections import CollectionsAdvisor, CustomerState
+from app.agents.contracts_enhanced import ContractIntelligence
 from app.agents.devcopilot import DevCopilot
 from app.agents.carecredit import CareCredit
 from app.agents.narrator import PortfolioIntelNarrator
-from app.agents.imagegen import ImageGenAgent
 from app.services.pdf_processor import LandingAIPDFProcessor, ProcessedPDF
+from app.config.rules_loader import get_rules_loader
 
 # Load environment variables
 load_dotenv()
@@ -59,6 +60,9 @@ async def lifespan(app: FastAPI):
     global docstore, embedder, retriever, agents, pdf_processor, multi_agent_supervisor
     
     try:
+        logger.info("Loading all rules from synchrony-demo-rules-repo...")
+        rules_loader = get_rules_loader()
+        
         logger.info("Initializing document store...")
         docstore = init_docstore()
         
@@ -75,16 +79,16 @@ async def lifespan(app: FastAPI):
         logger.info("Initializing PDF processor...")
         pdf_processor = LandingAIPDFProcessor()
         
-        logger.info("Initializing agents...")
+        logger.info("Initializing agents with centralized rules...")
         agents = {
-            'trustshield': TrustShield(docstore=docstore, embedder=embedder, retriever=retriever),
-            'offerpilot': OfferPilot(docstore=docstore, embedder=embedder, retriever=retriever),
-            'dispute': DisputeCopilot(docstore=docstore, embedder=embedder, retriever=retriever),
-            'collections': CollectionsAdvisor(docstore=docstore, embedder=embedder, retriever=retriever),
-            'devcopilot': DevCopilot(),
-            'carecredit': CareCredit(docstore=docstore, embedder=embedder, retriever=retriever),
-            'narrator': PortfolioIntelNarrator(docstore=docstore, embedder=embedder, retriever=retriever),
-            'imagegen': ImageGenAgent(),
+            'trustshield': TrustShield(docstore=docstore, embedder=embedder, retriever=retriever, rules_loader=rules_loader),
+            'offerpilot': OfferPilot(docstore=docstore, embedder=embedder, retriever=retriever, rules_loader=rules_loader),
+            'dispute': DisputeCopilot(docstore=docstore, embedder=embedder, retriever=retriever, rules_loader=rules_loader),
+            'collections': CollectionsAdvisor(docstore=docstore, embedder=embedder, retriever=retriever, rules_loader=rules_loader),
+            'contracts': ContractIntelligence(docstore=docstore, embedder=embedder, retriever=retriever, rules_loader=rules_loader),
+            'devcopilot': DevCopilot(docstore=docstore, embedder=embedder, retriever=retriever, rules_loader=rules_loader),
+            'carecredit': CareCredit(docstore=docstore, embedder=embedder, retriever=retriever, rules_loader=rules_loader),
+            'narrator': PortfolioIntelNarrator(docstore=docstore, embedder=embedder, retriever=retriever, rules_loader=rules_loader),
         }
         
         logger.info("Initializing LangGraph multi-agent supervisor...")
@@ -272,10 +276,8 @@ class CollectionsRequest(BaseModel):
     user_type: Optional[str] = "consumer"
 
 class DevCopilotRequest(BaseModel):
-    service: str
-    endpoint: Optional[str] = None
-    lang: str = "python"
-    sample: Optional[dict] = None
+    query: str
+    context: Optional[Dict[str, Any]] = None
 
 class CareCreditRequest(BaseModel):
     estimate_text: str
@@ -287,10 +289,10 @@ class NarratorRequest(BaseModel):
     question: str
     user_type: Optional[str] = "consumer"
 
-class ImageGenRequest(BaseModel):
-    prompt: str
-    include_text: Optional[bool] = True
-    style_hints: Optional[list[str]] = None
+
+class ContractRequest(BaseModel):
+    contract_text: str
+    question: Optional[str] = None
 
 # Serve static files from React build (only if directory exists)
 if Path("dist/assets").exists():
@@ -409,18 +411,16 @@ async def agent_collections(request: CollectionsRequest):
 
 @app.post("/agent/devcopilot")
 async def agent_devcopilot(request: DevCopilotRequest):
-    """DevCopilot direct endpoint"""
+    """DevCopilot direct endpoint for partner enablement"""
     if "devcopilot" not in agents:
         raise HTTPException(status_code=500, detail="DevCopilot not initialized")
     
     try:
-        result = agents["devcopilot"].generate_code_guide(
-            service=request.service,
-            endpoint=request.endpoint,
-            lang=request.lang,
-            sample=request.sample
+        result = agents["devcopilot"].process_request(
+            query=request.query,
+            context=request.context
         )
-        return result.dict()
+        return result.model_dump()
     except Exception as e:
         logger.error(f"DevCopilot error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -455,17 +455,18 @@ async def agent_narrator(request: NarratorRequest):
         logger.error(f"PortfolioIntelNarrator error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/agent/imagegen")
-async def agent_imagegen(request: ImageGenRequest):
-    """ImageGen direct endpoint"""
-    if "imagegen" not in agents:
-        raise HTTPException(status_code=500, detail="ImageGen not initialized")
+
+@app.post("/agent/contracts")
+async def agent_contracts(request: ContractRequest):
+    """Contract Intelligence direct endpoint"""
+    if "contracts" not in agents:
+        raise HTTPException(status_code=500, detail="ContractIntelligence not initialized")
     
     try:
-        result = agents["imagegen"].process_request(request)
+        result = agents["contracts"].analyze_contract(request.contract_text, request.question)
         return result.dict()
     except Exception as e:
-        logger.error(f"ImageGen error: {e}")
+        logger.error(f"ContractIntelligence error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/agent/trustshield")
@@ -723,6 +724,7 @@ UI_HTML = """
             <button class="tab" onclick="showTab('carecredit')">🏥 CareCredit</button>
             <button class="tab" onclick="showTab('narrator')">📊 Portfolio Intel</button>
             <button class="tab" onclick="showTab('trustshield')">🛡️ TrustShield</button>
+            <button class="tab" onclick="showTab('contracts')">📋 Contracts</button>
         </div>
         
         <!-- Smart Chat Tab -->
@@ -898,6 +900,25 @@ Total: $270.00"></textarea>
             <button class="btn" onclick="runTrustShield()">🛡️ Security Scan</button>
             <div class="loading" id="trustshield-loading">Scanning for security issues...</div>
             <div id="trustshield-result"></div>
+        </div>
+        
+        <!-- Contracts Tab -->
+        <div id="contracts" class="tab-content">
+            <div class="example">
+                <div class="example-title">📋 Contract Analysis Example:</div>
+                "What are the late fees?" or "Analyze this contract for promotional terms"
+            </div>
+            <div class="form-group">
+                <label>Contract Text:</label>
+                <textarea id="contracts-text" placeholder="Paste contract text here..." value="MERCHANT AGREEMENT - The APR for purchases is 24.99%. Equal payment promotional financing available for 12 months with no interest if paid in full during the promotional period. Late payment fee is $25. All disputes must be resolved through binding arbitration."></textarea>
+            </div>
+            <div class="form-group">
+                <label>Question (optional):</label>
+                <input type="text" id="contracts-question" placeholder="What are the late fees?" value="What are the promotional terms?">
+            </div>
+            <button class="btn" onclick="runContracts()">📋 Analyze Contract</button>
+            <div class="loading" id="contracts-loading">Analyzing contract clauses...</div>
+            <div id="contracts-result"></div>
         </div>
     </div>
 
@@ -1180,6 +1201,23 @@ Total: $270.00"></textarea>
                 showError('trustshield', error.message);
             } finally {
                 showLoading('trustshield', false);
+            }
+        }
+        
+        async function runContracts() {
+            const contract_text = document.getElementById('contracts-text').value;
+            const question = document.getElementById('contracts-question').value || null;
+            
+            if (!contract_text.trim()) return;
+            
+            showLoading('contracts', true);
+            try {
+                const result = await apiCall('/agent/contracts', { contract_text, question });
+                showResult('contracts', result);
+            } catch (error) {
+                showError('contracts', error.message);
+            } finally {
+                showLoading('contracts', false);
             }
         }
     </script>

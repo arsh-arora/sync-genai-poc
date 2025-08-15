@@ -5,13 +5,9 @@ import Header from './components/Header';
 import LeftRail from './components/LeftRail';
 import ChatPane from './components/ChatPane';
 import RightInspector from './components/RightInspector';
-import LandingPage from './components/LandingPage';
 
 function App() {
-  const [userType, setUserType] = useState<UserType | null>(() => {
-    const stored = localStorage.getItem('userType');
-    return stored as UserType | null;
-  });
+  const [userType, setUserType] = useState<UserType>('consumer'); // Default to consumer
   const [selectedAgent, setSelectedAgent] = useState('smart');
   const [allowTavily, setAllowTavily] = useState(false);
   const [allowLlmKnowledge, setAllowLlmKnowledge] = useState(true);
@@ -179,23 +175,15 @@ function App() {
     }
   };
 
-  const handleUserTypeSelect = (selectedUserType: UserType) => {
-    setUserType(selectedUserType);
-    localStorage.setItem('userType', selectedUserType);
-  };
-
   const handleResetPersona = () => {
-    setUserType(null);
-    localStorage.removeItem('userType');
+    setUserType('consumer');
     setMessages([]);
     setCitations([]);
     setToolTrace([]);
   };
 
-  // Show landing page if user type not selected
-  if (!userType) {
-    return <LandingPage onUserTypeSelect={handleUserTypeSelect} />;
-  }
+  // Auto-detect persona from context instead of manual selection
+  // No landing page needed - context-based routing handles persona detection
 
   return (
     <div className="h-screen flex flex-col bg-slate-50">
@@ -209,7 +197,6 @@ function App() {
         setAllowWebSearch={setAllowWebSearch}
         onClear={clearChat}
         onExport={exportJSON}
-        userType={userType}
         onResetPersona={handleResetPersona}
       />
 

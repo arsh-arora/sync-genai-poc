@@ -1,0 +1,34 @@
+{
+  "type": "object",
+  "required": [
+    "persona",
+    "platform",
+    "strategy",
+    "agents",
+    "trust",
+    "synthesis"
+  ],
+  "properties": {
+    "persona": {
+      "type": "string"
+    },
+    "platform": {
+      "type": "string"
+    },
+    "strategy": {
+      "type": "string"
+    },
+    "agents": {
+      "type": "array"
+    },
+    "synthesis": {
+      "type": "object"
+    },
+    "trust": {
+      "type": "object"
+    },
+    "fallback": {
+      "type": "object"
+    }
+  }
+}

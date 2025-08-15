@@ -1,0 +1,8 @@
+Clinic: SkinGlow
+City: Bengaluru
+
+Items:
+- Laser resurfacing session: ₹18,000
+- Follow-up consultation: ₹1,500
+
+Notes: Inquire about 6-month equal payments.

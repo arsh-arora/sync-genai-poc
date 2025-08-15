@@ -32,7 +32,8 @@ class FinancialServicesSupervisor:
     
     def __init__(self, agents: Dict[str, Any], google_api_key: str):
         self.agents = agents
-        self.available_agents = list(agents.keys())
+        # Available agents for routing (exclude trustshield as it's middleware only)
+        self.available_agents = [name for name in agents.keys() if name != 'trustshield']
         
         # Initialize Gemini model for supervisor reasoning
         self.supervisor_model = ChatGoogleGenerativeAI(
@@ -54,80 +55,92 @@ class FinancialServicesSupervisor:
         
     def _build_graph(self) -> StateGraph:
         """
-        Build the LangGraph multi-agent workflow
-        Following supervisor pattern with enhanced routing
+        Build the LangGraph multi-agent workflow with hierarchical orchestration
+        Following Tier-0 Master → Tier-1 Persona Supervisors → Tier-2 Agents pattern
         """
         # Create the graph with our financial services state
         graph = StateGraph(FinancialServicesState)
         
-        # Add supervisor node - central coordinator
-        graph.add_node("supervisor", self._supervisor_node)
+        # Tier-0: Master node - persona and platform detection
+        graph.add_node("master", self._master_node)
         
-        # Add analysis node - determine if multi-agent needed
+        # Tier-1: Persona-specific supervisors
+        graph.add_node("consumer_supervisor", self._consumer_supervisor_node)
+        graph.add_node("partner_supervisor", self._partner_supervisor_node)
+        
+        # Tier-2: Analysis, planning, coordination, execution (reused from existing)
         graph.add_node("analyze_query", self._analyze_query_node)
-        
-        # Add planning node - create execution plan
         graph.add_node("plan_execution", self._plan_execution_node)
-        
-        # Add synthesis node - combine agent results
+        graph.add_node("coordinator", self._coordinator_node)  # Routes to individual agents
         graph.add_node("synthesize_results", self._synthesize_results_node)
-        
-        # Add fallback node - graceful degradation
         graph.add_node("fallback_handler", self._fallback_node)
         
-        # Add individual agent nodes
+        # Add individual agent nodes (trustshield already excluded from available_agents)
         for agent_name in self.available_agents:
             graph.add_node(f"agent_{agent_name}", self._create_agent_node(agent_name))
         
-        # Define the workflow edges
-        graph.add_edge(START, "analyze_query")
+        # Define the hierarchical workflow edges
+        graph.add_edge(START, "master")
+        
+        # Master routes to persona-specific supervisors
+        graph.add_conditional_edges(
+            "master",
+            self._master_routing,
+            {
+                "consumer": "consumer_supervisor",
+                "partner": "partner_supervisor", 
+                "fallback": "fallback_handler"
+            }
+        )
+        
+        # Persona supervisors route to analysis
+        graph.add_edge("consumer_supervisor", "analyze_query")
+        graph.add_edge("partner_supervisor", "analyze_query")
         
         # From analysis, decide single vs multi-agent
         graph.add_conditional_edges(
             "analyze_query",
             self._route_after_analysis,
             {
-                "single_agent": "supervisor",  # Route directly to agent
-                "multi_agent": "plan_execution",  # Plan multi-agent execution
-                "fallback": "fallback_handler"  # Handle errors
+                "single_agent": "plan_execution",  # Still need planning for agent selection
+                "multi_agent": "plan_execution",   # Plan multi-agent execution
+                "fallback": "fallback_handler"     # Handle errors
             }
         )
         
-        # From planning, execute agents based on strategy
+        # From planning, route to coordinator 
         graph.add_conditional_edges(
             "plan_execution", 
             self._route_execution_strategy,
             {
-                "sequential": "supervisor",  # Supervisor manages sequence
-                "parallel": "supervisor",    # Supervisor handles parallel coordination
-                "conditional": "supervisor", # Conditional logic via supervisor
+                "sequential": "coordinator",  # Coordinator manages sequential execution
+                "parallel": "coordinator",    # Coordinator handles parallel execution  
+                "conditional": "coordinator", # Coordinator manages conditional logic
                 "fallback": "fallback_handler"
             }
         )
         
-        # Supervisor routes to specific agents or synthesis
+        # Coordinator routes to specific agents
         graph.add_conditional_edges(
-            "supervisor",
-            self._supervisor_routing,
+            "coordinator",
+            self._coordinator_routing,
             {
                 **{f"agent_{agent}": f"agent_{agent}" for agent in self.available_agents},
                 "synthesize": "synthesize_results",
-                "fallback": "fallback_handler",
-                "end": END
+                "fallback": "fallback_handler"
             }
         )
         
-        # All agent nodes return to supervisor for coordination
+        # All agent nodes return to coordinator for sequence management
         for agent_name in self.available_agents:
-            graph.add_edge(f"agent_{agent_name}", "supervisor")
+            graph.add_edge(f"agent_{agent_name}", "coordinator")
         
-        # Synthesis can end or continue to supervisor
+        # Synthesis completes or falls back
         graph.add_conditional_edges(
             "synthesize_results",
             self._check_synthesis_completion,
             {
                 "complete": END,
-                "continue": "supervisor", 
                 "fallback": "fallback_handler"
             }
         )
@@ -178,6 +191,182 @@ class FinancialServicesSupervisor:
             # Graceful degradation - fallback to single agent
             return await self._emergency_fallback(query, allow_tavily, allow_llm_knowledge, allow_web_search)
     
+    async def _master_node(self, state: FinancialServicesState) -> Dict[str, Any]:
+        """
+        Tier-0 Master node: Detect user persona and platform from query context
+        """
+        query = state["original_query"]
+        user_context = state.get("user_context", {})
+        
+        # Extract any existing user_type from context
+        existing_user_type = user_context.get("user_type", "")
+        
+        persona_prompt = f"""You are a persona detection system for a financial services platform. Analyze the query and context to determine if this is from a Consumer or Partner.
+
+Consumer indicators:
+- Personal financial questions ("my account", "I was charged", "help me pay")
+- Individual transactions and disputes
+- Personal financing needs
+- General customer service requests
+
+Partner indicators:
+- Business operations ("our campaign", "promo design", "widget integration")
+- Merchant/provider language ("enrollment", "compliance", "co-branded")
+- Developer/technical requests ("API", "webhook", "sandbox", "POS")
+- Business analytics ("portfolio metrics", "campaign performance")
+- Marketing/creative requests ("signage", "promotional copy")
+
+Query: "{query}"
+Existing context user_type: "{existing_user_type}"
+
+Respond with JSON:
+{{
+    "persona": "consumer|partner",
+    "confidence": 0.85,
+    "reasoning": "brief explanation of decision",
+    "detected_indicators": ["indicator1", "indicator2"]
+}}"""
+
+        try:
+            messages = [
+                SystemMessage(content=persona_prompt),
+                HumanMessage(content=f"Analyze persona for: {query}")
+            ]
+            
+            response = await self.analysis_model.ainvoke(messages)
+            result = json.loads(self._extract_json(response.content))
+            
+            detected_persona = result.get("persona", "consumer")
+            confidence = result.get("confidence", 0.5)
+            
+            # Override with existing user_type if available and confident
+            if existing_user_type in ["consumer", "partner"] and confidence < 0.8:
+                detected_persona = existing_user_type
+                logger.info(f"Using existing user_type: {existing_user_type}")
+            
+            logger.info(f"Master node detected persona: {detected_persona} (confidence: {confidence})")
+            
+            return {
+                "detected_persona": detected_persona,
+                "persona_confidence": confidence,
+                "persona_reasoning": result.get("reasoning", ""),
+                "user_context": {
+                    **user_context,
+                    "user_type": detected_persona
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Master persona detection failed: {e}")
+            # Default to consumer
+            return {
+                "detected_persona": "consumer",
+                "persona_confidence": 0.3,
+                "fallback_used": True,
+                "errors": [f"Persona detection failed: {str(e)}"]
+            }
+    
+    def _master_routing(self, state: FinancialServicesState) -> str:
+        """Route from master to appropriate persona supervisor"""
+        if state.get("fallback_used"):
+            return "fallback"
+        
+        persona = state.get("detected_persona", "consumer")
+        logger.info(f"🔀 Master routing to {persona} supervisor")
+        return persona
+    
+    async def _consumer_supervisor_node(self, state: FinancialServicesState) -> Dict[str, Any]:
+        """
+        Tier-1 Consumer supervisor: Filter to consumer-available agents
+        """
+        logger.info("Consumer supervisor: filtering agents for consumer persona")
+        
+        # Consumer-available agents (actual agents from initialization)
+        consumer_agents = ['offerpilot', 'dispute', 'collections', 'contracts', 'carecredit', 'narrator']
+        
+        # Filter agent tasks to only include consumer agents
+        original_tasks = state.get("agent_tasks", [])
+        filtered_tasks = [task for task in original_tasks if task.agent_type in consumer_agents]
+        
+        return {
+            "available_agents": consumer_agents,
+            "agent_tasks": filtered_tasks,
+            "persona_context": "consumer"
+        }
+    
+    async def _partner_supervisor_node(self, state: FinancialServicesState) -> Dict[str, Any]:
+        """
+        Tier-1 Partner supervisor: Filter to partner-available agents  
+        """
+        logger.info("Partner supervisor: filtering agents for partner persona")
+        
+        # Partner-available agents (actual agents, no collections/dispute filing)  
+        partner_agents = ['devcopilot', 'narrator', 'contracts', 'offerpilot', 'carecredit']
+        
+        # Filter agent tasks to only include partner agents
+        original_tasks = state.get("agent_tasks", [])
+        filtered_tasks = [task for task in original_tasks if task.agent_type in partner_agents]
+        
+        return {
+            "available_agents": partner_agents,
+            "agent_tasks": filtered_tasks,
+            "persona_context": "partner"
+        }
+
+    async def _coordinator_node(self, state: FinancialServicesState) -> Dict[str, Any]:
+        """
+        Coordinator node: Routes to individual agents based on execution plan
+        Replaces the removed supervisor node for agent orchestration
+        """
+        try:
+            current_agent = state.get("current_agent")
+            completed_agents = state.get("completed_agents", [])
+            active_agents = state.get("active_agents", [])
+            agent_results = state.get("agent_results", {})
+            
+            # Check if we're done with all agents
+            if current_agent is None and active_agents:
+                # Find the next agent to execute
+                remaining_agents = [agent for agent in active_agents if agent not in completed_agents]
+                if remaining_agents:
+                    current_agent = remaining_agents[0]
+                    logger.info(f"Coordinator setting current_agent to: {current_agent}")
+                    return {"current_agent": current_agent}
+            
+            # If we've completed all agents, move to synthesis
+            if len(completed_agents) >= len(active_agents) and active_agents:
+                logger.info("All agents completed, coordinator moving to synthesis")
+                return {"current_agent": None}  # Will route to synthesis
+            
+            # If we have a current agent, prepare for execution
+            if current_agent and current_agent not in completed_agents:
+                logger.info(f"Coordinator routing to agent: {current_agent}")
+                return {"current_agent": current_agent}
+            
+            # Default case - move to synthesis
+            return {"current_agent": None}
+            
+        except Exception as e:
+            logger.error(f"Coordinator failed: {e}")
+            return {
+                "fallback_used": True,
+                "errors": [f"Coordinator failed: {str(e)}"]
+            }
+    
+    def _coordinator_routing(self, state: FinancialServicesState) -> str:
+        """Route from coordinator to agents or synthesis"""
+        if state.get("fallback_used"):
+            return "fallback"
+        
+        current_agent = state.get("current_agent")
+        
+        if current_agent and current_agent in self.available_agents:
+            logger.info(f"🔀 Coordinator routing to agent_{current_agent}")
+            return f"agent_{current_agent}"
+        else:
+            logger.info("🔀 Coordinator routing to synthesize")
+            return "synthesize"
+
     async def _analyze_query_node(self, state: FinancialServicesState) -> Dict[str, Any]:
         """
         Analyze query to determine if multi-agent approach is needed
@@ -195,7 +384,6 @@ Available Specialized Agents:
 - devcopilot: Code generation, API documentation, technical support
 - carecredit: Medical/dental expense analysis, healthcare financing
 - narrator: Business analytics, portfolio insights, spending analysis
-- imagegen: Image generation from text descriptions
 
 Query needs MULTIPLE agents if:
 - Has multiple distinct tasks (e.g., "check if this is fraud AND find financing options")
@@ -246,13 +434,13 @@ Respond with JSON:
                 "trust": "trustshield",
                 "care": "carecredit",
                 "dev": "devcopilot",
-                "image": "imagegen"
+                "image": "narrator"
             }
             
             normalized_agents = []
             for agent in result.get("primary_agents", []):
                 normalized_agent = agent_normalization.get(agent, agent)
-                if normalized_agent in ["trustshield", "offerpilot", "dispute", "collections", "contracts", "devcopilot", "carecredit", "narrator", "imagegen"]:
+                if normalized_agent in ["trustshield", "offerpilot", "dispute", "collections", "contracts", "devcopilot", "carecredit", "narrator"]:
                     normalized_agents.append(normalized_agent)
             
             updates = {
@@ -294,22 +482,69 @@ Respond with JSON:
     
     async def _plan_execution_node(self, state: FinancialServicesState) -> Dict[str, Any]:
         """
-        Plan execution strategy for multi-agent workflows
+        Plan execution strategy for multi-agent workflows with parallel support
         """
         try:
             agent_tasks = state.get("agent_tasks", [])
             strategy = state.get("execution_strategy", ExecutionStrategy.SEQUENTIAL)
+            available_agents = state.get("available_agents", self.available_agents)
             
-            logger.info(f"Planning execution: {strategy.value} strategy with {len(agent_tasks)} agents")
+            # Filter tasks to only available agents for current persona
+            filtered_tasks = [task for task in agent_tasks if task.agent_type in available_agents]
             
-            # Set active agents based on tasks
-            active_agents = [task.agent_type for task in agent_tasks]
+            logger.info(f"Planning execution: {strategy.value} strategy with {len(filtered_tasks)} agents")
             
-            return {
-                "active_agents": active_agents,
-                "current_agent": active_agents[0] if active_agents else None,
-                "supervisor_active": True
-            }
+            if not filtered_tasks:
+                # No valid agents, fallback to simple routing
+                from app.router import route
+                route_result = route(state["original_query"])
+                agent_name = route_result["agent"]
+                
+                # Check if routed agent is available for this persona
+                if agent_name in available_agents:
+                    filtered_tasks = [AgentTask(agent_type=agent_name, query=state["original_query"], priority=1)]
+                else:
+                    # Default to smart chat
+                    filtered_tasks = [AgentTask(agent_type="smart", query=state["original_query"], priority=1)]
+            
+            active_agents = [task.agent_type for task in filtered_tasks]
+            
+            # For parallel execution, execute all agents simultaneously
+            if strategy == ExecutionStrategy.PARALLEL and len(active_agents) > 1:
+                logger.info(f"Executing {len(active_agents)} agents in parallel")
+                # Execute all agents in parallel
+                agent_results = {}
+                import asyncio
+                
+                async def execute_single_agent(agent_name: str) -> tuple[str, AgentResult]:
+                    result = await self._execute_agent(agent_name, state["original_query"], state)
+                    return agent_name, result
+                
+                # Run all agents in parallel
+                tasks = [execute_single_agent(agent) for agent in active_agents]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                
+                # Process results
+                for result in results:
+                    if isinstance(result, Exception):
+                        logger.error(f"Parallel agent execution error: {result}")
+                        continue
+                    agent_name, agent_result = result
+                    agent_results[agent_name] = agent_result
+                
+                return {
+                    "active_agents": active_agents,
+                    "completed_agents": active_agents,
+                    "agent_results": agent_results,
+                    "execution_strategy": strategy
+                }
+            else:
+                # Sequential execution - set up for traditional flow
+                return {
+                    "active_agents": active_agents,
+                    "current_agent": active_agents[0] if active_agents else None,
+                    "execution_strategy": strategy
+                }
             
         except Exception as e:
             logger.error(f"Execution planning failed: {e}")
@@ -368,7 +603,7 @@ Respond with JSON:
                     "trust": "trustshield",
                     "care": "carecredit",
                     "dev": "devcopilot",
-                    "image": "imagegen"
+                    "image": "narrator"
                 }
                 normalized_current_agent = agent_normalization.get(current_agent, current_agent)
                 
@@ -431,14 +666,13 @@ Respond with JSON:
                 "trust": "trustshield", 
                 "dev": "devcopilot",
                 "care": "carecredit",
-                "image": "imagegen",
+                "image": "narrator",
                 "dispute": "dispute",
                 "collections": "collections",
                 "contracts": "contracts",
                 "devcopilot": "devcopilot",
                 "carecredit": "carecredit",
                 "narrator": "narrator",
-                "imagegen": "imagegen"
             }
             
             mapped_agent = agent_name_mapping.get(agent_name, agent_name)
@@ -462,7 +696,7 @@ Respond with JSON:
                 "trust": "trustshield",
                 "care": "carecredit",
                 "dev": "devcopilot",
-                "image": "imagegen"
+                "image": "narrator"
             }
             normalized_current_agent = agent_normalization.get(current_agent, current_agent)
             
@@ -482,6 +716,9 @@ Respond with JSON:
             try:
                 query = state["original_query"]
                 user_context = state.get("user_context", {})
+                
+                # For ImageGen, always use original query to avoid redacted trigger words
+                imagegen_query = query if agent_name == "imagegen" else query
                 
                 # Get full reasoning from previous agents
                 previous_reasoning = user_context.get("previous_agent_reasoning", {})
@@ -572,21 +809,21 @@ Respond with JSON:
             elif agent_name == "offerpilot":
                 result = agent.process_query(query, None)  # No budget specified
                 
-                # Convert OfferPilotResponse to readable text
-                response_text = f"Found {len(result.items)} products matching your search:\n\n"
+                # Use the response text from OfferPilotResponse
+                response_text = result.response
                 
-                for item in result.items:
-                    response_text += f"**{item.title}** - ${item.price:,.2f} from {item.merchant}\n"
-                    if item.offers:
-                        response_text += f"Financing: {item.offers[0].months} months at {item.offers[0].apr}% APR\n"
-                    response_text += "\n"
+                # Get UI cards from metadata
+                ui_cards = result.metadata.get("ui_cards", [])
+                prequal = result.metadata.get("prequalification", {})
+                disclosures = result.metadata.get("disclosures", [])
                 
-                if result.prequal.eligible:
-                    response_text += f"✅ Pre-qualification: {result.prequal.reason}\n"
-                else:
-                    response_text += f"❌ Pre-qualification: {result.prequal.reason}\n"
+                # Add disclosure information if available
+                if disclosures:
+                    response_text += f"\n\n**Important Terms:**\n"
+                    for disclosure in disclosures[:2]:  # Limit to first 2
+                        response_text += f"• {disclosure}\n"
                 
-                sources = [citation.source for citation in result.citations]
+                sources = []  # OfferPilotResponse doesn't have citations in the old format
                 
                 return AgentResult(
                     agent_type=agent_name,
@@ -594,28 +831,10 @@ Respond with JSON:
                     response=response_text,
                     confidence=0.8,  # Default confidence for structured responses
                     sources=sources,
-                    metadata={"offers_found": len(result.items)},
+                    metadata={"offers_found": len(ui_cards), "prequalification": prequal},
                     processing_time=time.time() - start_time
                 )
             
-            elif agent_name == "imagegen":
-                # For imagegen, create a proper request object
-                from app.agents.imagegen import ImageGenRequest
-                request = ImageGenRequest(prompt=query, include_text=True, style_hints=[])
-                result = agent.process_request(request)
-                
-                return AgentResult(
-                    agent_type=agent_name,
-                    success=True,
-                    response=result.response,
-                    confidence=result.confidence,
-                    sources=result.sources,
-                    metadata={
-                        "image_generated": bool(result.image_data),
-                        "image_format": result.image_format
-                    },
-                    processing_time=time.time() - start_time
-                )
             
             else:
                 # Generic agent execution for other agents with proper method mapping
@@ -642,12 +861,22 @@ Respond with JSON:
                     
                 elif agent_name == "dispute":
                     result = agent.process_dispute(query)
-                    if isinstance(result, dict):
-                        response_text = result.get('analysis', str(result))
-                        sources = result.get('sources', [])
-                        confidence = result.get('confidence', 0.7)
-                    else:
-                        response_text = str(result)
+                    
+                    # Handle new DisputeResponse format
+                    response_text = result.response
+                    ui_cards = result.metadata.get("ui_cards", [])
+                    status = result.metadata.get("status", {})
+                    handoffs = result.metadata.get("handoffs", [])
+                    
+                    # Add status information to response
+                    if status:
+                        response_text += f"\n\n**Status:** {status.get('stage', 'unknown').replace('_', ' ').title()}"
+                        response_text += f" (Likelihood: {status.get('likelihood', 'unknown')})"
+                        if not status.get('eligible', True):
+                            response_text += f"\n⚠️ {status.get('eligibility_reason', 'Eligibility concerns')}"
+                    
+                    sources = []  # Enhanced dispute doesn't use traditional sources
+                    confidence = 0.8
                         
                 elif agent_name == "collections":
                     if hasattr(agent, 'process_hardship'):
@@ -665,34 +894,41 @@ Respond with JSON:
                         response_text = str(result)
                         
                 elif agent_name == "contracts":
-                    if hasattr(agent, 'analyze_contract'):
-                        result = agent.analyze_contract(query)
-                    elif hasattr(agent, 'process_query'):
-                        result = agent.process_query(query)
-                    else:
-                        result = {"response": "Contract analysis not implemented", "confidence": 0.5}
-                        
-                    if isinstance(result, dict):
-                        response_text = result.get('response', str(result))
-                        confidence = result.get('confidence', 0.7)
-                        sources = result.get('sources', [])
-                    else:
-                        response_text = str(result)
+                    # Use enhanced contract analysis with systematic clause extraction
+                    result = agent.analyze_contract(query)
+                    
+                    # Handle new ContractResponse format
+                    response_text = result.response
+                    ui_cards = result.metadata.get("ui_cards", [])
+                    risk_flags = result.metadata.get("risk_flags", [])
+                    handoffs = result.metadata.get("handoffs", [])
+                    needs_legal_review = result.metadata.get("needs_legal_review", False)
+                    
+                    # Add risk flags to response if present
+                    if risk_flags:
+                        high_risks = [f for f in risk_flags if f.get("severity") == "high"]
+                        if high_risks:
+                            response_text += f"\n\n⚠️ **High Priority Risks:** {len(high_risks)} identified"
+                        if needs_legal_review:
+                            response_text += "\n📋 **Legal Review Required**"
+                    
+                    sources = []  # Enhanced contracts doesn't use traditional sources
+                    confidence = 0.8
                         
                 elif agent_name == "devcopilot":
-                    if hasattr(agent, 'process_technical_query'):
-                        result = agent.process_technical_query(query)
-                    elif hasattr(agent, 'process_query'):
-                        result = agent.process_query(query)
-                    else:
-                        result = {"response": "DevCopilot processing not implemented", "confidence": 0.5}
+                    try:
+                        result = agent.process_request(query)
+                        response_text = result.response
+                        confidence = 0.8
                         
-                    if isinstance(result, dict):
-                        response_text = result.get('response', str(result))
-                        confidence = result.get('confidence', 0.7)
-                        sources = result.get('sources', [])
-                    else:
-                        response_text = str(result)
+                        # Extract sources from metadata
+                        sources = result.metadata.get('sources', [])
+                        
+                    except Exception as e:
+                        logger.error(f"DevCopilot error: {e}")
+                        response_text = f"DevCopilot processing failed: {str(e)}"
+                        confidence = 0.3
+                        sources = []
                         
                 elif agent_name == "carecredit":
                     if hasattr(agent, 'process_care_query'):
@@ -850,13 +1086,11 @@ Format your response naturally, addressing the user's query completely."""
                 }
     
     def _check_synthesis_completion(self, state: FinancialServicesState) -> str:
-        """Check if synthesis is complete or needs more work"""
+        """Check if synthesis is complete or needs fallback"""
         if state.get("final_response") and not state.get("fallback_used"):
             return "complete"
-        elif state.get("fallback_used") or state.get("errors"):
-            return "fallback"
         else:
-            return "continue"
+            return "fallback"
     
     async def _fallback_node(self, state: FinancialServicesState) -> Dict[str, Any]:
         """
@@ -878,14 +1112,13 @@ Format your response naturally, addressing the user's query completely."""
                 "trust": "trustshield", 
                 "dev": "devcopilot",
                 "care": "carecredit",
-                "image": "imagegen",
+                "image": "narrator",
                 "dispute": "dispute",        # Already matches
                 "collections": "collections", # Already matches
                 "contracts": "contracts",    # Already matches
                 "devcopilot": "devcopilot",  # Already matches
                 "carecredit": "carecredit",  # Already matches
-                "narrator": "narrator",      # Already matches
-                "imagegen": "imagegen"       # Already matches
+                "narrator": "narrator"       # Already matches
             }
             
             mapped_agent = agent_name_mapping.get(agent_name, agent_name)
@@ -950,6 +1183,13 @@ Format your response naturally, addressing the user's query completely."""
             if not final_response:
                 final_response = "I apologize, but I was unable to generate a response. Please try again."
         
+        # Collect UI cards from all successful agent results
+        all_ui_cards = []
+        for agent_name, result in agent_results.items():
+            if result.success and hasattr(result, 'metadata') and result.metadata:
+                ui_cards = result.metadata.get('ui_cards', [])
+                all_ui_cards.extend(ui_cards)
+
         response_data = {
             "response": final_response,
             "agent": primary_agent,
@@ -973,12 +1213,20 @@ Format your response naturally, addressing the user's query completely."""
                     }
                     for name, result in agent_results.items()
                 },
+                "ui_cards": all_ui_cards,
                 "errors": final_state.get("errors", []),
                 "retry_count": final_state.get("retry_count", 0)
             }
         }
         
         logger.info(f"🔍 Final response data: response='{response_data['response']}', agent={response_data['agent']}")
+        logger.info(f"🔍 UI cards included: {len(all_ui_cards)} cards")
+        if all_ui_cards:
+            for i, card in enumerate(all_ui_cards):
+                card_type = card.get('type', 'unknown')
+                has_image = 'image' in card
+                logger.info(f"🔍 UI Card {i+1}: type={card_type}, has_image={has_image}")
+        
         return response_data
     
     async def _emergency_fallback(self, query: str, allow_tavily: bool, allow_llm_knowledge: bool, allow_web_search: bool) -> Dict[str, Any]:
@@ -996,14 +1244,13 @@ Format your response naturally, addressing the user's query completely."""
                 "trust": "trustshield", 
                 "dev": "devcopilot",
                 "care": "carecredit",
-                "image": "imagegen",
+                "image": "narrator",
                 "dispute": "dispute",        # Already matches
                 "collections": "collections", # Already matches
                 "contracts": "contracts",    # Already matches
                 "devcopilot": "devcopilot",  # Already matches
                 "carecredit": "carecredit",  # Already matches
-                "narrator": "narrator",      # Already matches
-                "imagegen": "imagegen"       # Already matches
+                "narrator": "narrator"       # Already matches
             }
             
             mapped_agent = agent_name_mapping.get(agent_name, agent_name)

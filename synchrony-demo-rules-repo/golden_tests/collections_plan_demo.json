@@ -1,0 +1,9 @@
+{
+  "input": "I can't pay this month \u2014 what can I do?",
+  "expect_contains": [
+    "recommended plan",
+    "schedule",
+    "total cost",
+    "disclosures"
+  ]
+}

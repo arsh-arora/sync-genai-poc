@@ -1,0 +1,10 @@
+{
+  "input": "Here is my dental implant estimate. Can I do 12-month 0%?",
+  "expect_contains": [
+    "items",
+    "12-month",
+    "Equal monthly payments",
+    "No interest if paid in full",
+    "Disclosure"
+  ]
+}

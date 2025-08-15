@@ -53,17 +53,17 @@ function AgentItem({ agentKey, agent, isSelected, onSelect, onUseExample }: Agen
 }
 
 const LeftRail: React.FC<LeftRailProps> = ({ selectedAgent, onSelectAgent, onUseExample, userType }) => {
-  const availableAgents = getAvailableAgents(userType);
+  const availableAgents = getAvailableAgents(userType || 'consumer'); // Default to consumer
   
   return (
     <div className="w-72 bg-white border-r border-slate-200 flex flex-col">
       <div className="p-6 border-b border-slate-200">
-        <h2 className="text-lg font-semibold text-slate-800">Agents</h2>
+        <h2 className="text-lg font-semibold text-slate-800">AI Agents</h2>
         <p className="text-sm text-slate-500 mt-1">
-          {userType === 'consumer' ? 'Personal AI specialists' : 'Business AI tools'}
+          Choose your AI specialist
         </p>
         <div className="mt-2 text-xs text-slate-400 bg-slate-50 px-2 py-1 rounded">
-          {userType === 'consumer' ? '👤 Consumer' : '🤝 Partner'}
+          Auto-detected persona
         </div>
       </div>
       <div className="flex-1 overflow-y-auto">

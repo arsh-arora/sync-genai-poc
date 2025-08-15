@@ -1,0 +1,72 @@
+templates:
+  a4_instore:
+    format: "A4"
+    dimensions: "8.5x11"
+    orientation: "portrait"
+    layout: ["headline", "subhead", "price_callout", "cta", "legal_footer"]
+    brand_placement: "top_left"
+  a4_counter:
+    format: "A4" 
+    dimensions: "8.5x11"
+    orientation: "landscape"
+    layout: ["headline", "body", "cta", "legal_footer"]
+    brand_placement: "top_center"
+  social_square:
+    format: "square"
+    dimensions: "1080x1080"
+    orientation: "square"
+    layout: ["headline", "caption_with_legal"]
+    brand_placement: "bottom_right"
+  social_story:
+    format: "story"
+    dimensions: "1080x1920"
+    orientation: "portrait"
+    layout: ["headline", "body", "cta", "legal_footer"]
+    brand_placement: "top_center"
+  email_header:
+    format: "email"
+    dimensions: "1200x400" 
+    orientation: "landscape"
+    layout: ["headline", "cta", "legal_footer"]
+    brand_placement: "left_side"
+
+co_brand_settings:
+  default_hex: "#2E86DE"
+  placeholder_style: "initials_in_circle"
+  brand_positions:
+    - "top_left"
+    - "top_center"
+    - "top_right" 
+    - "bottom_left"
+    - "bottom_right"
+    - "left_side"
+
+dynamic_disclosures:
+  equal_payment:
+    triggers: ["equal payment", "equal monthly", "same payment", "fixed payment"]
+    disclosure_id: "equal_payment_generic"
+  deferred_interest:
+    triggers: ["no interest", "deferred interest", "0% interest", "interest-free"]
+    disclosure_id: "deferred_interest_generic"
+  promotional_rate:
+    triggers: ["promotional rate", "intro rate", "special rate", "limited time"]
+    disclosure_id: "promotional_rate_generic"
+
+banned_phrases:
+  guaranteed_approval:
+    phrases: ["guaranteed approval", "guaranteed financing", "everyone approved"]
+    replacement: "subject to credit approval"
+    severity: "high"
+  instant_decision:
+    phrases: ["instant approval", "immediate approval", "instant decision"]
+    replacement: "quick credit decision" 
+    severity: "medium"
+  no_credit_check:
+    phrases: ["no credit check", "skip credit check", "credit check not required"]
+    replacement: "streamlined application process"
+    severity: "high"
+
+legal_footers:
+  equal_payment_generic: "Equal monthly payments required. Subject to credit approval. See terms and conditions."
+  deferred_interest_generic: "If promotional balance is not paid in full by end of promotional period, interest will be charged from purchase date. Subject to credit approval."
+  promotional_rate_generic: "Promotional rate applies for limited time. Standard rates apply after promotional period. Subject to credit approval."

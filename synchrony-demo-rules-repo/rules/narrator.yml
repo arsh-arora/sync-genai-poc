@@ -1,0 +1,73 @@
+kpis:
+  approval_rate:
+    formula: "approved_apps / total_apps"
+    caveats: "Sampling bias; seasonality."
+    thresholds:
+      low: 0.60
+      medium: 0.75
+      high: 0.85
+  promo_uptake:
+    formula: "promo_txn / total_txn"
+    caveats: "Category mix effects."
+    thresholds:
+      low: 0.15
+      medium: 0.25
+      high: 0.35
+  revolve_rate:
+    formula: "balance_revolving / total_balance"
+    caveats: "Macroeconomic sensitivity."
+    thresholds:
+      low: 0.40
+      medium: 0.55
+      high: 0.70
+  charge_off_rate:
+    formula: "charge_offs / total_accounts"
+    caveats: "Lagging indicator."
+    thresholds:
+      low: 0.02
+      medium: 0.05
+      high: 0.08
+  funnel_conversion:
+    formula: "completed / started"
+    caveats: "Attribution leakage."
+    thresholds:
+      low: 0.20
+      medium: 0.40
+      high: 0.60
+  acquisition_cost:
+    formula: "marketing_spend / new_accounts"
+    caveats: "Channel attribution complexity."
+    thresholds:
+      low: 50.00
+      medium: 100.00
+      high: 150.00
+  portfolio_yield:
+    formula: "interest_revenue / avg_balance"
+    caveats: "Rate mix dependent."
+    thresholds:
+      low: 0.18
+      medium: 0.22
+      high: 0.26
+
+insight_ranking:
+  weights:
+    impact: 0.6
+    confidence: 0.4
+
+action_suggestions:
+  low_approval_rate:
+    action: "promo_tuning"
+    target_agent: "offer"
+    rationale: "Adjust qualification criteria or promotional terms"
+  low_promo_uptake:
+    action: "launch_asset" 
+    target_agent: "imagegen"
+    rationale: "Create targeted promotional materials"
+  high_charge_off:
+    action: "portfolio_review"
+    target_agent: "collections"
+    rationale: "Review risk management policies"
+  low_funnel_conversion:
+    action: "launch_asset"
+    target_agent: "imagegen"  
+    rationale: "Optimize application flow visuals"

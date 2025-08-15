@@ -18,7 +18,6 @@ AGENT_TYPES = [
     "devcopilot",
     "carecredit",
     "narrator",
-    "imagegen"
 ]
 
 def route(message: str) -> Dict[str, any]:
@@ -44,7 +43,6 @@ Agent Categories:
 - contracts: Contract terms, agreements, legal documents, merchant agreements
 - devcopilot: Technical support, API questions, integration help, developer tools
 - carecredit: Healthcare financing, medical payments, care credit specific queries
-- imagegen: Image generation, create picture, draw image, visual content requests
 - narrator: General conversation, greetings, small talk, unclear intent
 
 Respond with ONLY a JSON object in this exact format:
@@ -140,7 +138,6 @@ def get_agent_description(agent_type: str) -> str:
         "contracts": "Manages contract terms, agreements, and legal documents",
         "devcopilot": "Provides technical support and developer assistance",
         "carecredit": "Handles healthcare financing and medical payment queries",
-        "imagegen": "Generates images and visual content from text descriptions",
         "narrator": "Manages general conversation and unclear intents"
     }
     
@@ -219,10 +216,6 @@ def _keyword_based_routing(message: str) -> Dict[str, any]:
         "offer": [
             "offer", "promotion", "deal", "discount", "sale", "special",
             "limited time", "bonus"
-        ],
-        "imagegen": [
-            "generate image", "create picture", "draw", "make image", "visualize",
-            "render", "picture of", "image of", "show me", "design"
         ]
     }
     

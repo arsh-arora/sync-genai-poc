@@ -1,0 +1,18 @@
+categories:
+  duplicate_charge:
+    required_evidence: ["statement_screenshot", "merchant_name", "date", "amount"]
+    narrative_hint: "Two identical charges in close proximity without a second purchase."
+  item_not_received:
+    required_evidence: ["order_confirmation", "expected_delivery", "merchant_contact_attempt"]
+    narrative_hint: "Order not delivered by expected date; merchant contact unsuccessful."
+  wrong_amount:
+    required_evidence: ["receipt", "statement_screenshot", "correct_amount"]
+    narrative_hint: "Charged higher than agreed."
+  canceled_but_charged:
+    required_evidence: ["cancellation_confirmation", "statement_screenshot"]
+    narrative_hint: "Charge posted after cancellation."
+demo_clocks:
+  posting_window_days: 60
+  purchase_window_days: 90
+status_pipeline: ["intake", "compiled", "ready_to_submit", "submitted", "under_review"]
+likelihood_buckets: ["low", "medium", "high"]

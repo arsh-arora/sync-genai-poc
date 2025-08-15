@@ -56,7 +56,7 @@ class ContractIntelligence:
     Merchant Onboarding & Contract Intelligence for automated contract analysis
     """
     
-    def __init__(self, docstore=None, embedder=None, retriever=None):
+    def __init__(self, docstore=None, embedder=None, retriever=None, rules_loader=None):
         """Initialize ContractIntelligence with RAG components for terms retrieval"""
         self.docstore = docstore
         self.embedder = embedder

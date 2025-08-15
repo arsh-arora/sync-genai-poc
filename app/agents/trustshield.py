@@ -44,7 +44,7 @@ class TrustShield:
     Advanced threat detection and PII protection system
     """
     
-    def __init__(self, docstore=None, embedder=None, retriever=None):
+    def __init__(self, docstore=None, embedder=None, retriever=None, rules_loader=None):
         """Initialize TrustShield with optional RAG components for safety guidance"""
         self.docstore = docstore
         self.embedder = embedder
@@ -583,8 +583,19 @@ Focus on detecting sophisticated social engineering attempts."""
             
             redacted_text = anonymized_result.text
             
-            # Additional redaction for gift card codes and other patterns
-            redacted_text = re.sub(r'\b[A-Z0-9]{10,20}\b', '[GIFT_CARD_CODE]', redacted_text)
+            # Additional redaction for gift card codes (but preserve medical procedure codes)
+            # Only redact alphanumeric codes that are 10+ chars and don't look like procedure codes
+            def gift_card_replacer(match):
+                code = match.group(0)
+                # Don't redact medical procedure codes (D####, CPT codes, etc.)
+                if re.match(r'^[A-Z]\d{4}$', code):  # D2750, etc.
+                    return code
+                elif re.match(r'^\d{5}$', code):  # CPT codes like 99213
+                    return code
+                else:
+                    return '[GIFT_CARD_CODE]'
+            
+            redacted_text = re.sub(r'\b[A-Z0-9]{10,20}\b', gift_card_replacer, redacted_text)
             
             return redacted_text
             

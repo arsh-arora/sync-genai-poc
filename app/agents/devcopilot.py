@@ -1,15 +1,13 @@
 """
-Developer & Partner API Copilot
-Interactive guide for partner APIs with code snippets, validation, and Postman collections
+Developer & Partner API Copilot with Partner Enablement
+Mini doc index, stepwise checklists, and test flows for real partner enablement
 """
 
 import json
 import logging
-import os
+import re
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Literal
-import jsonschema
-from jsonschema import validate, ValidationError
 
 from pydantic import BaseModel, Field
 
@@ -17,788 +15,649 @@ from app.llm.gemini import chat
 
 logger = logging.getLogger(__name__)
 
-# Pydantic models for strict input/output schema enforcement
-class ValidationError(BaseModel):
-    path: str
-    msg: str
+# Pydantic models for partner enablement
+class ChecklistStep(BaseModel):
+    step: str
+    description: str
+    code_sample: Optional[str] = None
+    test_payload: Optional[Dict[str, Any]] = None
 
-class ValidationResult(BaseModel):
-    ok: bool
-    errors: List[ValidationError] = []
+class TestFlow(BaseModel):
+    name: str
+    description: str
+    payload: Dict[str, Any]
+    expected_response: Dict[str, Any]
 
-class CodeSnippet(BaseModel):
-    lang: str
-    code: str
-
-class PostmanInfo(BaseModel):
-    filename: str
+class DocSnippet(BaseModel):
+    source: str  # "doc#heading" format
+    content: str
 
 class DevCopilotResponse(BaseModel):
-    endpoint: str
-    snippet: CodeSnippet
-    example_request: Dict[str, Any]
-    validation: ValidationResult
-    postman: PostmanInfo
+    response: str  # 3-5 step guide + what to try now
+    metadata: Dict[str, Any]  # ui_cards with checklist/samples, sources
 
 class DevCopilot:
     """
-    Developer & Partner API Copilot for interactive API integration guidance
+    Developer & Partner API Copilot with Partner Enablement
+    Mini doc index, stepwise checklists, and test flows for real partner enablement
     """
     
-    def __init__(self):
-        """Initialize DevCopilot with OpenAPI registry"""
-        self.openapi_dir = Path("app/openapi")
-        self.downloads_dir = Path("app/ui/downloads")
-        self.downloads_dir.mkdir(exist_ok=True)
+    def __init__(self, docstore=None, embedder=None, retriever=None, rules_loader=None):
+        """Initialize DevCopilot with RAG components and dev docs index"""
+        self.docstore = docstore
+        self.embedder = embedder
+        self.retriever = retriever
+        self.rules_loader = rules_loader
+        
+        # Load dev docs index from fixtures
+        self.dev_docs_path = Path("synchrony-demo-rules-repo/fixtures/dev_docs")
+        self.doc_index = self._load_doc_index()
+        
+        # Common integration patterns
+        self.common_patterns = {
+            "embed prequal": self._get_prequal_checklist,
+            "receive dispute webhooks": self._get_webhook_checklist,
+            "sandbox run": self._get_sandbox_checklist
+        }
     
-    def generate_code_guide(
+    def process_request(
         self, 
-        service: str, 
-        endpoint: Optional[str] = None, 
-        lang: Literal["python", "javascript", "java", "curl"] = "python",
-        sample: Optional[Dict[str, Any]] = None
+        query: str,
+        context: Optional[Dict[str, Any]] = None
     ) -> DevCopilotResponse:
         """
-        Main processing pipeline for API code generation and guidance
+        Main processing pipeline for partner enablement with stepwise guides
         
         Args:
-            service: Service name to load OpenAPI spec for
-            endpoint: Specific endpoint (if None, suggests top 3)
-            lang: Programming language for code snippet
-            sample: Sample payload to validate
+            query: Partner's question or integration ask
+            context: Optional context (partner_id, environment, etc.)
             
         Returns:
-            DevCopilotResponse with code snippet, validation, and Postman collection
+            DevCopilotResponse with 3-5 step guide and what to try now
         """
         try:
-            logger.info(f"Generating code guide for service: {service}")
+            logger.info(f"Processing DevCopilot request: {query}")
             
-            # Step 1: Load OpenAPI spec
-            spec = self.openapi_registry(service)
-            if not spec:
-                return self._error_response(f"Service '{service}' not found in registry")
+            # Step 1: Detect common integration patterns
+            pattern = self._detect_pattern(query)
             
-            # Step 2: Determine endpoint
-            if not endpoint:
-                suggested_endpoints = self._suggest_endpoints(spec, service)
-                endpoint = suggested_endpoints[0] if suggested_endpoints else None
+            if pattern:
+                # Step 2: Generate stepwise checklist
+                checklist = self.common_patterns[pattern]()
                 
-            if not endpoint:
-                return self._error_response("No suitable endpoint found")
-            
-            logger.info(f"Using endpoint: {endpoint}")
-            
-            # Step 3: Generate code snippet
-            snippet = self._generate_code_snippet(spec, endpoint, lang)
-            
-            # Step 4: Create example request
-            example_request = self._generate_example_request(spec, endpoint)
-            
-            # Step 5: Validate sample payload if provided
-            validation = ValidationResult(ok=True, errors=[])
-            if sample:
-                validation = self.payload_validate(sample, spec, endpoint)
-            
-            # Step 6: Generate Postman collection
-            postman_info = self.postman_export(spec, endpoint)
-            
-            return DevCopilotResponse(
-                endpoint=endpoint,
-                snippet=snippet,
-                example_request=example_request,
-                validation=validation,
-                postman=postman_info
-            )
+                # Step 3: Get relevant doc snippets
+                doc_snippets = self._search_docs(query)
+                
+                # Step 4: Generate test flows
+                test_flows = self._generate_test_flows(pattern)
+                
+                # Step 5: Build response
+                response = self._build_guide_response(pattern, checklist, doc_snippets, test_flows)
+                
+                return response
+            else:
+                # General query - search docs and provide guidance
+                return self._handle_general_query(query, context)
             
         except Exception as e:
-            logger.error(f"Error generating code guide: {e}")
+            logger.error(f"Error processing DevCopilot request: {e}")
             return self._error_response(f"Error: {str(e)}")
     
-    def openapi_registry(self, service: str) -> Optional[Dict[str, Any]]:
-        """
-        Load OpenAPI specification from registry
+    def _load_doc_index(self) -> Dict[str, Dict[str, str]]:
+        """Load mini doc index from fixtures/dev_docs/*.md with anchored snippets"""
+        doc_index = {}
         
-        Args:
-            service: Service name
-            
-        Returns:
-            OpenAPI spec dictionary or None if not found
-        """
         try:
-            spec_file = self.openapi_dir / f"{service}.json"
-            if not spec_file.exists():
-                logger.error(f"OpenAPI spec not found: {spec_file}")
-                return None
+            if not self.dev_docs_path.exists():
+                logger.warning(f"Dev docs path not found: {self.dev_docs_path}")
+                return doc_index
             
-            with open(spec_file, 'r') as f:
-                spec = json.load(f)
-            
-            logger.info(f"Loaded OpenAPI spec for {service}")
-            return spec
-            
-        except Exception as e:
-            logger.error(f"Error loading OpenAPI spec for {service}: {e}")
-            return None
-    
-    def payload_validate(
-        self, 
-        payload: Dict[str, Any], 
-        spec: Dict[str, Any], 
-        endpoint: str
-    ) -> ValidationResult:
-        """
-        Validate payload against OpenAPI schema
-        
-        Args:
-            payload: JSON payload to validate
-            spec: OpenAPI specification
-            endpoint: API endpoint path
-            
-        Returns:
-            ValidationResult with errors if any
-        """
-        try:
-            # Find the schema for the endpoint
-            schema = self._extract_request_schema(spec, endpoint)
-            if not schema:
-                return ValidationResult(
-                    ok=False, 
-                    errors=[ValidationError(path="", msg="No schema found for endpoint")]
-                )
-            
-            # Validate payload against schema
-            try:
-                validate(instance=payload, schema=schema)
-                return ValidationResult(ok=True, errors=[])
-            
-            except jsonschema.ValidationError as e:
-                errors = self._format_validation_errors([e])
-                return ValidationResult(ok=False, errors=errors)
-            
-            except jsonschema.SchemaError as e:
-                return ValidationResult(
-                    ok=False,
-                    errors=[ValidationError(path="schema", msg=f"Invalid schema: {str(e)}")]
-                )
+            for doc_file in self.dev_docs_path.glob("*.md"):
+                doc_name = doc_file.stem
+                content = doc_file.read_text(encoding='utf-8')
                 
+                # Parse headings for anchored snippets
+                sections = {}
+                current_heading = "main"
+                current_content = []
+                
+                for line in content.split('\n'):
+                    if line.startswith('#'):
+                        # Save previous section
+                        if current_content:
+                            sections[current_heading] = '\n'.join(current_content).strip()
+                        
+                        # Start new section
+                        current_heading = line.strip('#').strip().lower().replace(' ', '_')
+                        current_content = []
+                    else:
+                        current_content.append(line)
+                
+                # Save final section
+                if current_content:
+                    sections[current_heading] = '\n'.join(current_content).strip()
+                
+                doc_index[doc_name] = sections
+                logger.info(f"Loaded {len(sections)} sections from {doc_name}.md")
+            
+            return doc_index
+            
         except Exception as e:
-            logger.error(f"Error validating payload: {e}")
-            return ValidationResult(
-                ok=False,
-                errors=[ValidationError(path="", msg=f"Validation error: {str(e)}")]
+            logger.error(f"Error loading doc index: {e}")
+            return {}
+    
+    def _detect_pattern(self, query: str) -> Optional[str]:
+        """Detect common integration patterns from query"""
+        query_lower = query.lower()
+        
+        # Pattern matching with keywords
+        if any(word in query_lower for word in ['embed', 'widget', 'prequal', 'qualification']):
+            return "embed prequal"
+        elif any(word in query_lower for word in ['webhook', 'dispute', 'status', 'callback']):
+            return "receive dispute webhooks"
+        elif any(word in query_lower for word in ['sandbox', 'test', 'run', 'try']):
+            return "sandbox run"
+        
+        return None
+    
+    def _get_prequal_checklist(self) -> List[ChecklistStep]:
+        """Generate prequalification widget embed checklist"""
+        return [
+            ChecklistStep(
+                step="1. Get Sandbox Keys",
+                description="Request sandbox API keys from partner portal",
+                code_sample="""
+# Set your sandbox credentials
+API_KEY = "sk_sandbox_..."
+PARTNER_ID = "partner_123"
+ENVIRONMENT = "sandbox"
+                """.strip()
+            ),
+            ChecklistStep(
+                step="2. Add Widget Script",
+                description="Include prequalification widget script in your page",
+                code_sample="""
+<script src="https://widgets.sandbox.syncpay.com/prequal.js"></script>
+<div id="prequal-widget"></div>
+                """.strip(),
+                test_payload={
+                    "amount": 2500.00,
+                    "partner_id": "partner_123",
+                    "customer_context": {"zip": "10001"}
+                }
+            ),
+            ChecklistStep(
+                step="3. Initialize Widget",
+                description="Initialize with amount and partner context",
+                code_sample="""
+SyncPay.Prequal.init({
+    containerId: 'prequal-widget',
+    amount: 2500.00,
+    partnerId: 'partner_123',
+    environment: 'sandbox',
+    onStart: (data) => console.log('Started:', data),
+    onComplete: (result) => handlePrequalResult(result)
+});
+                """.strip()
+            ),
+            ChecklistStep(
+                step="4. Handle Callbacks",
+                description="Store prequalification outcomes and display offers",
+                code_sample="""
+function handlePrequalResult(result) {
+    if (result.approved) {
+        // Display financing options
+        showFinancingOffers(result.offers);
+    } else {
+        // Handle decline gracefully
+        showAlternativeOptions();
+    }
+}
+                """.strip(),
+                test_payload={
+                    "prequal_id": "pq_123",
+                    "approved": True,
+                    "offers": [{"term_months": 12, "apr": 0.0}]
+                }
             )
+        ]
     
-    def mock_sandbox_call(self, endpoint: str, request: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Mock sandbox call that echoes request with basic constraints
-        
-        Args:
-            endpoint: API endpoint
-            request: Request payload
-            
-        Returns:
-            Mock response with status and body
-        """
-        try:
-            # Basic mock response based on endpoint
-            if "payment" in endpoint.lower():
-                return {
-                    "status": 201,
-                    "body": {
-                        "id": "pay_mock_123456",
-                        "amount": request.get("amount", 100.00),
-                        "currency": request.get("currency", "USD"),
-                        "status": "completed",
-                        "createdAt": "2024-01-01T12:00:00Z"
-                    }
-                }
-            elif "balance" in endpoint.lower():
-                return {
-                    "status": 200,
-                    "body": {
-                        "accountId": request.get("accountId", "acc_123"),
-                        "availableBalance": 1500.00,
-                        "currentBalance": 2000.00,
-                        "currency": "USD"
-                    }
-                }
-            else:
-                return {
-                    "status": 200,
-                    "body": {
-                        "message": "Mock response",
-                        "request": request
-                    }
-                }
-                
-        except Exception as e:
-            return {
-                "status": 500,
-                "body": {
-                    "error": f"Mock error: {str(e)}"
-                }
-            }
+    def _get_webhook_checklist(self) -> List[ChecklistStep]:
+        """Generate dispute webhook handling checklist"""
+        return [
+            ChecklistStep(
+                step="1. Set Webhook Endpoint",
+                description="Configure your endpoint to receive dispute status updates",
+                code_sample="""
+# Example Flask endpoint
+@app.route('/webhooks/dispute-status', methods=['POST'])
+def handle_dispute_webhook():
+    payload = request.get_json()
     
-    def postman_export(
-        self, 
-        spec: Dict[str, Any], 
-        focus_endpoint: Optional[str] = None
-    ) -> PostmanInfo:
-        """
-        Export Postman collection for the API spec
-        
-        Args:
-            spec: OpenAPI specification
-            focus_endpoint: Specific endpoint to focus on
-            
-        Returns:
-            PostmanInfo with filename
-        """
+    # Verify webhook signature
+    if not verify_webhook_signature(request.headers, payload):
+        return 'Unauthorized', 401
+    
+    process_dispute_update(payload)
+    return 'OK', 200
+                """.strip()
+            ),
+            ChecklistStep(
+                step="2. Handle Status Changes",
+                description="Process dispute status transitions: intake→compiled→ready_to_submit→submitted→under_review",
+                code_sample="""
+def process_dispute_update(payload):
+    dispute_id = payload['dispute_id']
+    status = payload['status']
+    
+    # Update dispute record
+    dispute = Dispute.get(dispute_id)
+    dispute.status = status
+    dispute.save()
+    
+    # Trigger appropriate actions
+    if status == 'ready_to_submit':
+        notify_customer(dispute, 'ready_for_submission')
+    elif status == 'under_review':
+        notify_customer(dispute, 'being_reviewed')
+                """.strip(),
+                test_payload={
+                    "dispute_id": "disp_123",
+                    "status": "ready_to_submit",
+                    "timestamp": "2024-01-01T12:00:00Z",
+                    "merchant": "Urban Living Co",
+                    "amount": 350.00
+                }
+            ),
+            ChecklistStep(
+                step="3. Implement Retry Logic",
+                description="Handle failed webhooks with exponential backoff",
+                code_sample="""
+# Webhook retry configuration
+WEBHOOK_RETRY_ATTEMPTS = 3
+WEBHOOK_RETRY_DELAY = [1, 5, 15]  # seconds
+
+def send_webhook_with_retry(url, payload):
+    for attempt in range(WEBHOOK_RETRY_ATTEMPTS):
         try:
-            service_name = spec.get("info", {}).get("title", "API").replace(" ", "_")
-            filename = f"{service_name}_collection.json"
-            filepath = self.downloads_dir / filename
-            
-            # Create basic Postman collection
-            collection = {
-                "info": {
-                    "name": spec.get("info", {}).get("title", "API Collection"),
-                    "description": spec.get("info", {}).get("description", ""),
-                    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
-                },
-                "auth": {
-                    "type": "apikey",
-                    "apikey": [
-                        {
-                            "key": "key",
-                            "value": "X-API-Key",
-                            "type": "string"
-                        },
-                        {
-                            "key": "value",
-                            "value": "{{API_KEY}}",
-                            "type": "string"
-                        }
+            response = requests.post(url, json=payload, timeout=10)
+            if response.status_code == 200:
+                return True
+        except requests.RequestException:
+            pass
+        
+        time.sleep(WEBHOOK_RETRY_DELAY[attempt])
+    
+    # Log failed webhook for manual processing
+    log_failed_webhook(url, payload)
+    return False
+                """.strip()
+            )
+        ]
+    
+    def _get_sandbox_checklist(self) -> List[ChecklistStep]:
+        """Generate sandbox testing checklist"""
+        return [
+            ChecklistStep(
+                step="1. Switch to Sandbox Environment",
+                description="Configure your app to use sandbox URLs and keys",
+                code_sample="""
+# Sandbox configuration
+BASE_URL = "https://api.sandbox.syncpay.com"
+API_KEY = "sk_sandbox_test_..."
+WIDGET_URL = "https://widgets.sandbox.syncpay.com"
+
+# Enable debug mode
+DEBUG_MODE = True
+LOG_LEVEL = "DEBUG"
+                """.strip()
+            ),
+            ChecklistStep(
+                step="2. Use Test Credit Profiles",
+                description="Test with deterministic credit profiles for predictable results",
+                test_payload={
+                    "test_profiles": [
+                        {"ssn_last4": "1111", "result": "approved", "max_amount": 5000},
+                        {"ssn_last4": "2222", "result": "declined", "reason": "insufficient_credit"},
+                        {"ssn_last4": "3333", "result": "manual_review", "timeline": "1-2 business days"}
                     ]
-                },
-                "variable": [
-                    {
-                        "key": "baseUrl",
-                        "value": spec.get("servers", [{}])[0].get("url", ""),
-                        "type": "string"
-                    }
-                ],
-                "item": []
-            }
-            
-            # Add requests for each endpoint
-            paths = spec.get("paths", {})
-            for path, methods in paths.items():
-                if focus_endpoint and path != focus_endpoint:
-                    continue
+                }
+            ),
+            ChecklistStep(
+                step="3. Test Key Flows",
+                description="Run through critical integration paths",
+                code_sample="""
+# Test prequalification flow
+test_prequal = {
+    "amount": 1500.00,
+    "customer": {"ssn_last4": "1111"},  # Always approves
+    "partner_id": "partner_sandbox"
+}
+
+# Test dispute creation
+test_dispute = {
+    "merchant": "Test Merchant",
+    "amount": 299.99,
+    "reason": "duplicate_charge",
+    "evidence": ["receipt.pdf"]
+}
+
+# Run automated tests
+run_integration_tests()
+                """.strip()
+            ),
+            ChecklistStep(
+                step="4. Validate Webhook Delivery",
+                description="Ensure webhooks are received correctly in sandbox",
+                code_sample="""
+# Test webhook endpoint using ngrok or similar
+# 1. Start your local server
+# 2. Expose with ngrok: ngrok http 3000
+# 3. Configure webhook URL in sandbox dashboard
+# 4. Trigger test events
+
+# Webhook test payload
+webhook_test = {
+    "dispute_id": "disp_sandbox_123",
+    "status": "compiled",
+    "test_mode": True
+}
+                """.strip(),
+                test_payload={
+                    "webhook_url": "https://your-ngrok-url.ngrok.io/webhooks/test",
+                    "test_events": ["dispute.status_changed", "prequal.completed"]
+                }
+            )
+        ]
+    
+    def _search_docs(self, query: str) -> List[DocSnippet]:
+        """Search doc index for relevant snippets"""
+        query_lower = query.lower()
+        relevant_snippets = []
+        
+        try:
+            # Search through doc index
+            for doc_name, sections in self.doc_index.items():
+                for section_name, content in sections.items():
+                    # Check if query terms appear in content
+                    content_lower = content.lower()
                     
-                for method, operation in methods.items():
-                    if method.upper() in ["GET", "POST", "PUT", "DELETE", "PATCH"]:
-                        request_item = self._create_postman_request(
-                            path, method.upper(), operation, spec
-                        )
-                        collection["item"].append(request_item)
+                    # Simple relevance scoring
+                    score = 0
+                    query_words = query_lower.split()
+                    
+                    for word in query_words:
+                        if len(word) > 2:  # Skip short words
+                            if word in content_lower:
+                                score += content_lower.count(word)
+                    
+                    if score > 0:
+                        relevant_snippets.append(DocSnippet(
+                            source=f"{doc_name}.md#{section_name}",
+                            content=content[:300] + "..." if len(content) > 300 else content
+                        ))
             
-            # Write collection to file
-            with open(filepath, 'w') as f:
-                json.dump(collection, f, indent=2)
-            
-            logger.info(f"Exported Postman collection: {filename}")
-            return PostmanInfo(filename=filename)
+            # Sort by relevance and return top 3
+            return relevant_snippets[:3]
             
         except Exception as e:
-            logger.error(f"Error exporting Postman collection: {e}")
-            return PostmanInfo(filename="error_collection.json")
+            logger.error(f"Error searching docs: {e}")
+            return []
     
-    def _suggest_endpoints(self, spec: Dict[str, Any], service: str) -> List[str]:
-        """Suggest top 3 endpoints using Gemini"""
-        try:
-            paths = list(spec.get("paths", {}).keys())
-            if len(paths) <= 3:
-                return paths
+    def _generate_test_flows(self, pattern: str) -> List[TestFlow]:
+        """Generate deterministic test flows for pattern"""
+        if pattern == "embed prequal":
+            return [
+                TestFlow(
+                    name="Approved Prequalification",
+                    description="Test with auto-approval profile",
+                    payload={
+                        "amount": 2500.00,
+                        "customer": {"ssn_last4": "1111", "zip": "10001"},
+                        "partner_id": "partner_sandbox"
+                    },
+                    expected_response={
+                        "approved": True,
+                        "prequal_id": "pq_approved_123",
+                        "offers": [
+                            {"term_months": 12, "apr": 0.0, "monthly_payment": 208.33},
+                            {"term_months": 24, "apr": 9.99, "monthly_payment": 115.38}
+                        ]
+                    }
+                ),
+                TestFlow(
+                    name="Declined Prequalification",
+                    description="Test decline handling",
+                    payload={
+                        "amount": 2500.00,
+                        "customer": {"ssn_last4": "2222", "zip": "10001"},
+                        "partner_id": "partner_sandbox"
+                    },
+                    expected_response={
+                        "approved": False,
+                        "prequal_id": "pq_declined_123",
+                        "reason": "insufficient_credit_history"
+                    }
+                )
+            ]
+        
+        elif pattern == "receive dispute webhooks":
+            return [
+                TestFlow(
+                    name="Dispute Status Update",
+                    description="Test webhook delivery for status change",
+                    payload={
+                        "dispute_id": "disp_test_123",
+                        "status": "ready_to_submit",
+                        "previous_status": "compiled",
+                        "timestamp": "2024-01-01T12:00:00Z",
+                        "test_mode": True
+                    },
+                    expected_response={
+                        "received": True,
+                        "processed": True,
+                        "next_action": "notify_customer"
+                    }
+                )
+            ]
+        
+        elif pattern == "sandbox run":
+            return [
+                TestFlow(
+                    name="Full Integration Test",
+                    description="End-to-end sandbox test",
+                    payload={
+                        "test_scenario": "happy_path",
+                        "prequal_amount": 1500.00,
+                        "customer_profile": "approved",
+                        "dispute_test": True
+                    },
+                    expected_response={
+                        "prequal_passed": True,
+                        "webhook_delivered": True,
+                        "integration_score": "100%"
+                    }
+                )
+            ]
+        
+        return []
+    
+    def _build_guide_response(
+        self, 
+        pattern: str, 
+        checklist: List[ChecklistStep], 
+        doc_snippets: List[DocSnippet],
+        test_flows: List[TestFlow]
+    ) -> DevCopilotResponse:
+        """Build step-by-step guide response"""
+        
+        # Generate response text (3-5 step guide)
+        guide_steps = []
+        for i, step in enumerate(checklist, 1):
+            guide_steps.append(f"{i}. {step.step}: {step.description}")
+        
+        response_text = f"""**{pattern.title()} Integration Guide:**
+
+{chr(10).join(guide_steps)}
+
+**What to try now:**
+- Use the code samples in the checklist below
+- Test with the provided payloads in sandbox mode
+- Check the documentation snippets for additional details
+- Validate webhook delivery if applicable"""
+        
+        # Build metadata for UI cards
+        ui_cards = []
+        
+        # Add checklist cards
+        for step in checklist:
+            card = {
+                "type": "checklist",
+                "title": step.step,
+                "content": step.description
+            }
             
-            # Use Gemini to suggest most relevant endpoints
-            system_prompt = f"""You are an API expert. Given the following API endpoints for the {service} service, suggest the top 3 most commonly used endpoints that developers would want to integrate first.
-
-Consider endpoints that are:
-1. Core functionality (create, read operations)
-2. Most likely to be used in initial integration
-3. Provide immediate value to developers
-
-Return only the endpoint paths as a JSON array, nothing else."""
-
-            user_message = f"API endpoints: {json.dumps(paths)}"
+            if step.code_sample:
+                card["code_sample"] = step.code_sample
+            
+            if step.test_payload:
+                card["test_payload"] = step.test_payload
+            
+            ui_cards.append(card)
+        
+        # Add test flow cards
+        for flow in test_flows:
+            ui_cards.append({
+                "type": "test_flow",
+                "title": flow.name,
+                "description": flow.description,
+                "payload": flow.payload,
+                "expected_response": flow.expected_response
+            })
+        
+        # Build sources from doc snippets
+        sources = [snippet.source for snippet in doc_snippets]
+        
+        return DevCopilotResponse(
+            response=response_text,
+            metadata={
+                "ui_cards": ui_cards,
+                "sources": sources,
+                "pattern": pattern,
+                "test_flows": [flow.model_dump() for flow in test_flows],
+                "doc_snippets": [snippet.model_dump() for snippet in doc_snippets]
+            }
+        )
+    
+    def _handle_general_query(self, query: str, context: Optional[Dict[str, Any]]) -> DevCopilotResponse:
+        """Handle general queries not matching specific patterns"""
+        
+        # Search docs for relevant content
+        doc_snippets = self._search_docs(query)
+        
+        # Use LLM to generate response if needed
+        try:
+            system_prompt = """You are a developer support specialist. Help partners integrate with our APIs.
+            
+            Provide a concise 3-5 step guide based on the documentation snippets.
+            Focus on actionable steps and what to try next."""
+            
+            context_text = ""
+            if doc_snippets:
+                context_text = "\n\nRelevant documentation:\n"
+                for snippet in doc_snippets:
+                    context_text += f"- {snippet.source}: {snippet.content}\n"
+            
+            user_message = f"Partner question: {query}{context_text}"
             messages = [{"role": "user", "content": user_message}]
             
-            response = chat(messages, system=system_prompt)
+            llm_response = chat(messages, system=system_prompt)
             
-            try:
-                suggested = json.loads(response.strip())
-                return suggested[:3] if isinstance(suggested, list) else paths[:3]
-            except:
-                return paths[:3]
-                
-        except Exception as e:
-            logger.error(f"Error suggesting endpoints: {e}")
-            return list(spec.get("paths", {}).keys())[:3]
-    
-    def _generate_code_snippet(
-        self, 
-        spec: Dict[str, Any], 
-        endpoint: str, 
-        lang: str
-    ) -> CodeSnippet:
-        """Generate code snippet for the endpoint"""
-        try:
-            base_url = spec.get("servers", [{}])[0].get("url", "https://api.example.com")
-            
-            # Get endpoint details
-            path_info = spec.get("paths", {}).get(endpoint, {})
-            method = list(path_info.keys())[0] if path_info else "get"
-            operation = path_info.get(method, {})
-            
-            # Generate example request body
-            example_body = self._generate_example_request(spec, endpoint)
-            
-            if lang == "python":
-                code = self._generate_python_snippet(base_url, endpoint, method, example_body)
-            elif lang == "javascript":
-                code = self._generate_javascript_snippet(base_url, endpoint, method, example_body)
-            elif lang == "java":
-                code = self._generate_java_snippet(base_url, endpoint, method, example_body)
-            elif lang == "curl":
-                code = self._generate_curl_snippet(base_url, endpoint, method, example_body)
-            else:
-                code = f"# Code snippet for {lang} not implemented yet"
-            
-            return CodeSnippet(lang=lang, code=code)
-            
-        except Exception as e:
-            logger.error(f"Error generating code snippet: {e}")
-            return CodeSnippet(
-                lang=lang, 
-                code=f"# Error generating {lang} snippet: {str(e)}"
-            )
-    
-    def _generate_python_snippet(
-        self, 
-        base_url: str, 
-        endpoint: str, 
-        method: str, 
-        example_body: Dict[str, Any]
-    ) -> str:
-        """Generate Python code snippet"""
-        if method.upper() == "GET":
-            return f'''import requests
-
-# API Configuration
-API_KEY = "your_api_key_here"
-BASE_URL = "{base_url}"
-
-# Headers
-headers = {{
-    "X-API-Key": API_KEY,
-    "Content-Type": "application/json"
-}}
-
-# Make GET request
-response = requests.get(
-    f"{{BASE_URL}}{endpoint}",
-    headers=headers
-)
-
-# Handle response
-if response.status_code == 200:
-    data = response.json()
-    print("Success:", data)
-else:
-    print(f"Error {{response.status_code}}: {{response.text}}")
-'''
-        else:
-            return f'''import requests
-import json
-
-# API Configuration
-API_KEY = "your_api_key_here"
-BASE_URL = "{base_url}"
-
-# Headers
-headers = {{
-    "X-API-Key": API_KEY,
-    "Content-Type": "application/json"
-}}
-
-# Request payload
-payload = {json.dumps(example_body, indent=4)}
-
-# Make {method.upper()} request
-response = requests.{method.lower()}(
-    f"{{BASE_URL}}{endpoint}",
-    headers=headers,
-    json=payload
-)
-
-# Handle response
-if response.status_code in [200, 201]:
-    data = response.json()
-    print("Success:", data)
-else:
-    print(f"Error {{response.status_code}}: {{response.text}}")
-'''
-    
-    def _generate_javascript_snippet(
-        self, 
-        base_url: str, 
-        endpoint: str, 
-        method: str, 
-        example_body: Dict[str, Any]
-    ) -> str:
-        """Generate JavaScript code snippet"""
-        if method.upper() == "GET":
-            return f'''// API Configuration
-const API_KEY = "your_api_key_here";
-const BASE_URL = "{base_url}";
-
-// Make GET request
-fetch(`${{BASE_URL}}{endpoint}`, {{
-    method: 'GET',
-    headers: {{
-        'X-API-Key': API_KEY,
-        'Content-Type': 'application/json'
-    }}
-}})
-.then(response => {{
-    if (!response.ok) {{
-        throw new Error(`HTTP error! status: ${{response.status}}`);
-    }}
-    return response.json();
-}})
-.then(data => {{
-    console.log('Success:', data);
-}})
-.catch(error => {{
-    console.error('Error:', error);
-}});
-'''
-        else:
-            return f'''// API Configuration
-const API_KEY = "your_api_key_here";
-const BASE_URL = "{base_url}";
-
-// Request payload
-const payload = {json.dumps(example_body, indent=2)};
-
-// Make {method.upper()} request
-fetch(`${{BASE_URL}}{endpoint}`, {{
-    method: '{method.upper()}',
-    headers: {{
-        'X-API-Key': API_KEY,
-        'Content-Type': 'application/json'
-    }},
-    body: JSON.stringify(payload)
-}})
-.then(response => {{
-    if (!response.ok) {{
-        throw new Error(`HTTP error! status: ${{response.status}}`);
-    }}
-    return response.json();
-}})
-.then(data => {{
-    console.log('Success:', data);
-}})
-.catch(error => {{
-    console.error('Error:', error);
-}});
-'''
-    
-    def _generate_curl_snippet(
-        self, 
-        base_url: str, 
-        endpoint: str, 
-        method: str, 
-        example_body: Dict[str, Any]
-    ) -> str:
-        """Generate cURL code snippet"""
-        if method.upper() == "GET":
-            return f'''curl -X GET "{base_url}{endpoint}" \\
-  -H "X-API-Key: your_api_key_here" \\
-  -H "Content-Type: application/json"
-'''
-        else:
-            return f'''curl -X {method.upper()} "{base_url}{endpoint}" \\
-  -H "X-API-Key: your_api_key_here" \\
-  -H "Content-Type: application/json" \\
-  -d '{json.dumps(example_body)}'
-'''
-    
-    def _generate_java_snippet(
-        self, 
-        base_url: str, 
-        endpoint: str, 
-        method: str, 
-        example_body: Dict[str, Any]
-    ) -> str:
-        """Generate Java code snippet"""
-        return f'''import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.net.URI;
-
-public class APIClient {{
-    private static final String API_KEY = "your_api_key_here";
-    private static final String BASE_URL = "{base_url}";
-    
-    public static void main(String[] args) throws Exception {{
-        HttpClient client = HttpClient.newHttpClient();
-        
-        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
-            .uri(URI.create(BASE_URL + "{endpoint}"))
-            .header("X-API-Key", API_KEY)
-            .header("Content-Type", "application/json");
-            
-        {"// Request body" if method.upper() != "GET" else ""}
-        {"String requestBody = " + json.dumps(json.dumps(example_body)) + ";" if method.upper() != "GET" else ""}
-        
-        HttpRequest request = requestBuilder
-            .{method.upper()}({f"HttpRequest.BodyPublishers.ofString(requestBody)" if method.upper() != "GET" else "HttpRequest.BodyPublishers.noBody()"})
-            .build();
-            
-        HttpResponse<String> response = client.send(request, 
-            HttpResponse.BodyHandlers.ofString());
-            
-        System.out.println("Status: " + response.statusCode());
-        System.out.println("Response: " + response.body());
-    }}
-}}
-'''
-    
-    def _generate_example_request(self, spec: Dict[str, Any], endpoint: str) -> Dict[str, Any]:
-        """Generate example request payload"""
-        try:
-            path_info = spec.get("paths", {}).get(endpoint, {})
-            
-            # Find POST/PUT method with request body
-            for method, operation in path_info.items():
-                request_body = operation.get("requestBody", {})
-                if request_body:
-                    content = request_body.get("content", {})
-                    json_content = content.get("application/json", {})
-                    schema = json_content.get("schema", {})
-                    
-                    return self._generate_example_from_schema(schema, spec)
-            
-            # If no request body, return empty dict
-            return {}
-            
-        except Exception as e:
-            logger.error(f"Error generating example request: {e}")
-            return {"error": "Could not generate example"}
-    
-    def _generate_example_from_schema(
-        self, 
-        schema: Dict[str, Any], 
-        spec: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Generate example data from JSON schema"""
-        try:
-            # Handle $ref
-            if "$ref" in schema:
-                ref_path = schema["$ref"].split("/")
-                ref_schema = spec
-                for part in ref_path[1:]:  # Skip '#'
-                    ref_schema = ref_schema.get(part, {})
-                return self._generate_example_from_schema(ref_schema, spec)
-            
-            schema_type = schema.get("type", "object")
-            
-            if schema_type == "object":
-                example = {}
-                properties = schema.get("properties", {})
-                required = schema.get("required", [])
-                
-                for prop_name, prop_schema in properties.items():
-                    if prop_name in required or len(example) < 3:  # Include required + some optional
-                        example[prop_name] = self._generate_example_value(prop_schema, spec)
-                
-                return example
-            
-            elif schema_type == "array":
-                items_schema = schema.get("items", {})
-                return [self._generate_example_from_schema(items_schema, spec)]
-            
-            else:
-                return self._generate_example_value(schema, spec)
-                
-        except Exception as e:
-            logger.error(f"Error generating example from schema: {e}")
-            return {"example": "value"}
-    
-    def _generate_example_value(self, schema: Dict[str, Any], spec: Dict[str, Any]) -> Any:
-        """Generate example value based on schema type"""
-        schema_type = schema.get("type", "string")
-        
-        if schema_type == "string":
-            if schema.get("format") == "date-time":
-                return "2024-01-01T12:00:00Z"
-            elif "enum" in schema:
-                return schema["enum"][0]
-            else:
-                return "example_string"
-        
-        elif schema_type == "number":
-            minimum = schema.get("minimum", 0)
-            return max(100.0, minimum + 1)
-        
-        elif schema_type == "integer":
-            minimum = schema.get("minimum", 0)
-            return max(1, minimum + 1)
-        
-        elif schema_type == "boolean":
-            return True
-        
-        elif schema_type == "object":
-            return self._generate_example_from_schema(schema, spec)
-        
-        elif schema_type == "array":
-            items_schema = schema.get("items", {})
-            return [self._generate_example_value(items_schema, spec)]
-        
-        else:
-            return "example_value"
-    
-    def _extract_request_schema(self, spec: Dict[str, Any], endpoint: str) -> Optional[Dict[str, Any]]:
-        """Extract request schema for validation"""
-        try:
-            path_info = spec.get("paths", {}).get(endpoint, {})
-            
-            for method, operation in path_info.items():
-                request_body = operation.get("requestBody", {})
-                if request_body:
-                    content = request_body.get("content", {})
-                    json_content = content.get("application/json", {})
-                    schema = json_content.get("schema", {})
-                    
-                    # Resolve $ref if present
-                    if "$ref" in schema:
-                        return self._resolve_schema_ref(schema["$ref"], spec)
-                    
-                    return schema
-            
-            return None
-            
-        except Exception as e:
-            logger.error(f"Error extracting request schema: {e}")
-            return None
-    
-    def _resolve_schema_ref(self, ref: str, spec: Dict[str, Any]) -> Dict[str, Any]:
-        """Resolve $ref to actual schema"""
-        try:
-            ref_path = ref.split("/")
-            schema = spec
-            for part in ref_path[1:]:  # Skip '#'
-                schema = schema.get(part, {})
-            return schema
-        except Exception as e:
-            logger.error(f"Error resolving schema ref {ref}: {e}")
-            return {}
-    
-    def _format_validation_errors(self, errors: List[jsonschema.ValidationError]) -> List[ValidationError]:
-        """Format validation errors for response"""
-        formatted_errors = []
-        
-        for error in errors:
-            path = ".".join(str(p) for p in error.absolute_path) if error.absolute_path else "root"
-            formatted_errors.append(ValidationError(
-                path=path,
-                msg=error.message
-            ))
-        
-        return formatted_errors
-    
-    def _create_postman_request(
-        self, 
-        path: str, 
-        method: str, 
-        operation: Dict[str, Any], 
-        spec: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Create Postman request item"""
-        request_item = {
-            "name": operation.get("summary", f"{method} {path}"),
-            "request": {
-                "method": method,
-                "header": [
-                    {
-                        "key": "Content-Type",
-                        "value": "application/json"
-                    }
-                ],
-                "url": {
-                    "raw": "{{baseUrl}}" + path,
-                    "host": ["{{baseUrl}}"],
-                    "path": path.strip("/").split("/")
+            # Build basic response
+            return DevCopilotResponse(
+                response=llm_response,
+                metadata={
+                    "ui_cards": [
+                        {
+                            "type": "general_help",
+                            "title": "General Guidance",
+                            "content": llm_response
+                        }
+                    ],
+                    "sources": [snippet.source for snippet in doc_snippets],
+                    "doc_snippets": [snippet.model_dump() for snippet in doc_snippets]
                 }
-            }
-        }
-        
-        # Add request body if present
-        request_body = operation.get("requestBody", {})
-        if request_body:
-            example_body = self._generate_example_request(spec, path)
-            request_item["request"]["body"] = {
-                "mode": "raw",
-                "raw": json.dumps(example_body, indent=2)
-            }
-        
-        return request_item
+            )
+            
+        except Exception as e:
+            logger.error(f"Error with LLM response: {e}")
+            
+            # Fallback to doc-only response
+            if doc_snippets:
+                response_text = "Based on the documentation:\n\n"
+                for snippet in doc_snippets:
+                    response_text += f"**{snippet.source}:**\n{snippet.content}\n\n"
+            else:
+                response_text = "I don't have specific documentation for that question. Please check the partner portal or contact support."
+            
+            return DevCopilotResponse(
+                response=response_text,
+                metadata={
+                    "ui_cards": [],
+                    "sources": [snippet.source for snippet in doc_snippets],
+                    "doc_snippets": [snippet.model_dump() for snippet in doc_snippets]
+                }
+            )
     
     def _error_response(self, message: str) -> DevCopilotResponse:
         """Create error response"""
         return DevCopilotResponse(
-            endpoint="",
-            snippet=CodeSnippet(lang="text", code=f"Error: {message}"),
-            example_request={},
-            validation=ValidationResult(ok=False, errors=[ValidationError(path="", msg=message)]),
-            postman=PostmanInfo(filename="error.json")
+            response=f"**Error:** {message}\n\nPlease try rephrasing your question or contact support.",
+            metadata={
+                "ui_cards": [
+                    {
+                        "type": "error",
+                        "title": "Error",
+                        "content": message
+                    }
+                ],
+                "sources": [],
+                "error": message
+            }
         )
 
-# Test cases for DevCopilot scenarios
+# Test cases for DevCopilot partner enablement scenarios
 def test_devcopilot():
-    """Test DevCopilot with golden-path scenarios"""
-    print("🧪 Testing DevCopilot Golden Paths")
+    """Test DevCopilot with partner enablement scenarios"""
+    print("🧪 Testing DevCopilot Partner Enablement")
     print("=" * 50)
     
     copilot = DevCopilot()
     
     test_cases = [
         {
-            "name": "Invalid payload shows precise pointer fixes",
-            "service": "payments",
-            "endpoint": "/payments",
-            "lang": "python",
-            "sample": {"amount": -10, "currency": "EUR"},  # Invalid: negative amount, wrong currency
-            "expected_validation_errors": True
+            "name": "Embed prequalification widget",
+            "query": "How do I embed the prequalification widget on my checkout page?",
+            "expected_pattern": "embed prequal",
+            "expected_checklist_steps": 4
         },
         {
-            "name": "Valid payload passes validation",
-            "service": "payments", 
-            "endpoint": "/payments",
-            "lang": "curl",
-            "sample": {"amount": 100.0, "currency": "USD", "accountId": "acc_123"},
-            "expected_validation_errors": False
+            "name": "Receive dispute webhooks",
+            "query": "I need to handle dispute status webhooks in my app",
+            "expected_pattern": "receive dispute webhooks",
+            "expected_checklist_steps": 3
         },
         {
-            "name": "Code snippet generation for JavaScript",
-            "service": "payments",
-            "endpoint": "/payments",
-            "lang": "javascript",
-            "sample": None,
-            "expected_validation_errors": False
+            "name": "Sandbox testing",
+            "query": "How can I test my integration in the sandbox?",
+            "expected_pattern": "sandbox run",
+            "expected_checklist_steps": 4
+        },
+        {
+            "name": "General query",
+            "query": "What's the API rate limit?",
+            "expected_pattern": None,
+            "expected_checklist_steps": 0
         }
     ]
     
@@ -809,43 +668,36 @@ def test_devcopilot():
         try:
             print(f"{i}. {case['name']}")
             
-            result = copilot.generate_code_guide(
-                service=case["service"],
-                endpoint=case["endpoint"],
-                lang=case["lang"],
-                sample=case["sample"]
-            )
+            result = copilot.process_request(case["query"])
             
             # Validate response structure
             valid_structure = (
-                hasattr(result, 'endpoint') and
-                hasattr(result, 'snippet') and
-                hasattr(result, 'example_request') and
-                hasattr(result, 'validation') and
-                hasattr(result, 'postman')
+                hasattr(result, 'response') and
+                hasattr(result, 'metadata') and
+                'ui_cards' in result.metadata and
+                'sources' in result.metadata
             )
             
-            # Check validation expectations
-            validation_ok = (
-                (case["expected_validation_errors"] and not result.validation.ok) or
-                (not case["expected_validation_errors"] and result.validation.ok)
-            )
+            # Check pattern detection
+            detected_pattern = result.metadata.get('pattern')
+            pattern_ok = detected_pattern == case['expected_pattern']
             
-            # Check code snippet is generated
-            snippet_ok = len(result.snippet.code) > 10 and case["lang"] in result.snippet.code.lower()
+            # Check checklist steps
+            ui_cards = result.metadata.get('ui_cards', [])
+            checklist_cards = [card for card in ui_cards if card.get('type') == 'checklist']
+            checklist_ok = len(checklist_cards) == case['expected_checklist_steps']
             
-            # Check Postman file
-            postman_ok = result.postman.filename.endswith(".json")
+            # Check response content
+            response_ok = len(result.response) > 50 and 'step' in result.response.lower()
             
-            success = valid_structure and validation_ok and snippet_ok and postman_ok
+            success = valid_structure and pattern_ok and checklist_ok and response_ok
             status = "✅ PASS" if success else "❌ FAIL"
             
-            print(f"   Service: {case['service']}")
-            print(f"   Endpoint: {result.endpoint}")
-            print(f"   Language: {result.snippet.lang}")
-            print(f"   Validation OK: {result.validation.ok}")
-            print(f"   Validation Errors: {len(result.validation.errors)}")
-            print(f"   Postman File: {result.postman.filename}")
+            print(f"   Query: {case['query']}")
+            print(f"   Pattern: {detected_pattern}")
+            print(f"   Checklist Steps: {len(checklist_cards)}")
+            print(f"   UI Cards: {len(ui_cards)}")
+            print(f"   Sources: {len(result.metadata.get('sources', []))}")
             print(f"   Status: {status}")
             
             if success:
@@ -854,12 +706,12 @@ def test_devcopilot():
                 print(f"   Failure reasons:")
                 if not valid_structure:
                     print(f"     - Invalid response structure")
-                if not validation_ok:
-                    print(f"     - Validation expectation not met")
-                if not snippet_ok:
-                    print(f"     - Code snippet issue")
-                if not postman_ok:
-                    print(f"     - Postman file issue")
+                if not pattern_ok:
+                    print(f"     - Pattern mismatch: expected {case['expected_pattern']}, got {detected_pattern}")
+                if not checklist_ok:
+                    print(f"     - Checklist steps: expected {case['expected_checklist_steps']}, got {len(checklist_cards)}")
+                if not response_ok:
+                    print(f"     - Response content issue")
             
             print()
             
