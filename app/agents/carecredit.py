@@ -785,21 +785,27 @@ Focus on actual billable procedures, ignore totals and administrative text."""
             budget = float(budget_match.group(1).replace(',', ''))
         
         # Generate a helpful response about CareCredit in general
-        response_text = f"""I can help you understand CareCredit financing options for healthcare expenses.
-        
-**CareCredit Overview:**
-• Special healthcare credit card for medical, dental, veterinary, and vision expenses
-• Promotional financing options including 6, 12, 18, and 24-month plans
-• No interest if paid in full within promotional period
-• Accepted at over 260,000 healthcare providers nationwide
+        response_text = f"""# CareCredit Healthcare Financing
 
-**Next Steps:**
+I can help you understand CareCredit financing options for healthcare expenses.
+
+## CareCredit Overview
+
+CareCredit is a specialized healthcare credit card designed to cover medical expenses:
+
+- **Medical, dental, veterinary, and vision** expenses covered
+- **Promotional financing** options: 6, 12, 18, and 24-month plans  
+- **0% interest** if paid in full within promotional period
+- **260,000+ healthcare providers** nationwide accept CareCredit
+
+## Next Steps
+
 1. **Get a specific treatment estimate** from your healthcare provider
-2. **Upload the estimate** here for detailed financing analysis
+2. **Upload the estimate** here for detailed financing analysis  
 3. **Apply for CareCredit** at carecredit.com if you haven't already
 4. **Use the CareCredit mobile app** to manage your account
 
-For detailed financing calculations, please provide a specific treatment estimate with procedures and costs."""
+> For detailed financing calculations, please provide a specific treatment estimate with procedures and costs."""
 
         if budget:
             response_text += f"\n\n**Budget Note:** For expenses around ${budget:,.0f}, CareCredit offers several promotional periods that can help manage costs."
@@ -837,47 +843,50 @@ For detailed financing calculations, please provide a specific treatment estimat
         """
         response_parts = []
         
-        # Counts summary
-        response_parts.append(
-            f"**Treatment Summary:** {len(procedures)} procedure{'s' if len(procedures) != 1 else ''} "
-            f"totaling ${total_cost:,.2f}"
-        )
+        # Main title
+        response_parts.append("# CareCredit Treatment Financing Analysis")
+        response_parts.append("")
         
-        # OOPP estimate
-        response_parts.append(
-            f"**Out-of-Pocket:** ${oopp.estimated_total:,.2f} "
-            f"({oopp.assumptions.get('caveat', 'estimate only')})"
-        )
+        # Treatment overview
+        response_parts.append("## Treatment Overview")
+        response_parts.append(f"- **Procedures**: {len(procedures)} procedure{'s' if len(procedures) != 1 else ''}")
+        response_parts.append(f"- **Total Cost**: ${total_cost:,.2f}")
+        response_parts.append(f"- **Out-of-Pocket**: ${oopp.estimated_total:,.2f} *(estimate based on {oopp.assumptions.get('caveat', 'typical coverage')})*")
+        response_parts.append("")
         
-        # 12-month financing explanation
+        # Financing options
         if financing:
+            response_parts.append("## Financing Options")
             best_12mo = next((f for f in financing if f.months == 12), financing[0])
             if best_12mo.apr == 0:
-                response_parts.append(
-                    f"**12-Month Financing:** ${best_12mo.monthly:.2f}/month with 0% APR promotional financing"
-                )
+                response_parts.append(f"**🎯 Recommended**: ${best_12mo.monthly:.2f}/month with **0% APR** promotional financing")
+                response_parts.append("")
+                response_parts.append("### Key Features:")
+                response_parts.append("- No interest if paid in full within promotional period")
+                response_parts.append("- Easy monthly payments")  
+                response_parts.append("- Instant approval available")
             else:
-                response_parts.append(
-                    f"**12-Month Financing:** ${best_12mo.monthly:.2f}/month at {best_12mo.apr}% APR"
-                )
+                response_parts.append(f"**Monthly Payment**: ${best_12mo.monthly:.2f}/month at {best_12mo.apr}% APR")
+            response_parts.append("")
         
         # Provider availability
         if providers:
             next_appt = min(p.next_appt_days for p in providers)
-            response_parts.append(
-                f"**Providers:** {len(providers)} CareCredit providers available, "
-                f"next appointment in {next_appt} days"
-            )
+            response_parts.append("## Provider Availability")
+            response_parts.append(f"- **{len(providers)} CareCredit providers** available in your area")
+            response_parts.append(f"- **Next available appointment**: {next_appt} days")
+            response_parts.append("")
         
         # Next steps
-        next_steps = []
+        response_parts.append("## Next Steps")
         if providers:
-            next_steps.append("1. Contact a provider to schedule consultation")
-        next_steps.append("2. Apply for CareCredit at carecredit.com")
-        next_steps.append("3. Bring your CareCredit card to your appointment")
+            response_parts.append("1. **Contact a provider** to schedule consultation")
+        response_parts.append("2. **Apply for CareCredit** at carecredit.com")
+        response_parts.append("3. **Bring your CareCredit card** to your appointment")
+        response_parts.append("")
         
-        if next_steps:
-            response_parts.append(f"**Next Steps:** {' | '.join(next_steps)}")
+        # Important note
+        response_parts.append("> **Note**: CareCredit is accepted at over 260,000 healthcare providers nationwide for medical, dental, veterinary, and vision expenses.")
         
         return "\n".join(response_parts)
     

@@ -290,7 +290,14 @@ Respond with JSON:
             ]
             
             response = await self.analysis_model.ainvoke(messages)
-            result = json.loads(self._extract_json(response.content))
+            
+            # Debug: Print raw response
+            logger.info(f"Raw persona detection response: {repr(response.content)}")
+            
+            extracted_json = self._extract_json(response.content)
+            logger.info(f"Extracted JSON: {repr(extracted_json)}")
+            
+            result = json.loads(extracted_json)
             
             detected_persona = result.get("persona", "consumer")
             confidence = result.get("confidence", 0.5)
@@ -1106,16 +1113,28 @@ Original User Query: {original_query}
 Agent Results:
 {json.dumps(results_for_synthesis, indent=2, default=str)}
 
+IMPORTANT: Format your response using proper markdown:
+- Use # for main titles
+- Use ## for section headers
+- Use ### for subsections  
+- Use numbered lists (1. 2. 3.) for steps
+- Use bullet points (-) for lists
+- Use **bold** for emphasis and key terms
+- Use `code` for technical terms
+- Use proper paragraph spacing with empty lines
+- Use > for important notes or quotes
+
 Guidelines:
 1. Synthesize information into one cohesive, natural response
 2. Preserve expertise and insights from each agent  
 3. Resolve conflicts between agents logically
-4. Organize with clear sections if needed
+4. Organize with clear sections using markdown headers
 5. Maintain professional financial services tone
 6. Include relevant details and maintain source attribution
 7. Make it feel like a single intelligent response, not separate answers
+8. Ensure proper spacing and formatting throughout
 
-Format your response naturally, addressing the user's query completely."""
+Format your response in clean, well-structured markdown that will render beautifully."""
 
             messages = [
                 SystemMessage(content=synthesis_prompt),
@@ -1146,11 +1165,11 @@ Format your response naturally, addressing the user's query completely."""
             successful_results = {k: v for k, v in agent_results.items() if v.success}
             
             if successful_results:
-                fallback_response = f"Based on analysis from {len(successful_results)} specialized agents:\n\n"
+                fallback_response = f"# Analysis Results\n\nBased on analysis from {len(successful_results)} specialized agents:\n\n"
                 all_sources = []
                 
                 for agent_name, result in successful_results.items():
-                    fallback_response += f"**{agent_name.title()} Analysis:**\n{result.response}\n\n"
+                    fallback_response += f"## {agent_name.title()} Analysis\n\n{result.response}\n\n"
                     all_sources.extend(result.sources)
                 
                 return {
@@ -1379,15 +1398,25 @@ Format your response naturally, addressing the user's query completely."""
         """Extract JSON from LLM response that may contain markdown formatting"""
         import re
         
-        # Try to find JSON in code blocks
-        json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', text, re.DOTALL)
-        if json_match:
-            return json_match.group(1)
+        if not text or not text.strip():
+            return "{}"
         
-        # Try to find JSON directly
+        # Try to find JSON in code blocks (more flexible pattern)
+        json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', text, re.DOTALL | re.IGNORECASE)
+        if json_match:
+            return json_match.group(1).strip()
+        
+        # Try to find JSON directly (non-greedy)
         json_match = re.search(r'\{.*?\}', text, re.DOTALL)
         if json_match:
-            return json_match.group(0)
+            return json_match.group(0).strip()
         
-        # Fallback
-        return text
+        # Try to extract everything between first { and last }
+        first_brace = text.find('{')
+        last_brace = text.rfind('}')
+        if first_brace != -1 and last_brace != -1 and first_brace < last_brace:
+            return text[first_brace:last_brace+1].strip()
+        
+        # Fallback - return empty JSON
+        logger.warning(f"Could not extract JSON from: {repr(text[:200])}")
+        return '{"persona": "consumer", "confidence": 0.3, "reasoning": "Failed to parse response"}'

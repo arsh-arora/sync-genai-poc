@@ -11,6 +11,8 @@ interface RightInspectorProps {
   uploadedPdfs: UploadedPdf[];
   selectedPdfChunk: any;
   setSelectedPdfChunk: (chunk: any) => void;
+  isCollapsed: boolean;
+  onToggleCollapse: () => void;
 }
 
 const RightInspector: React.FC<RightInspectorProps> = ({
@@ -21,10 +23,75 @@ const RightInspector: React.FC<RightInspectorProps> = ({
   agentTrace,
   uploadedPdfs,
   selectedPdfChunk,
-  setSelectedPdfChunk
+  setSelectedPdfChunk,
+  isCollapsed,
+  onToggleCollapse
 }) => {
+  if (isCollapsed) {
+    return (
+      <div className="w-12 bg-white border-l border-slate-200 flex flex-col">
+        <div className="p-3 border-b border-slate-200">
+          <button
+            onClick={onToggleCollapse}
+            className="w-full p-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded transition-colors"
+            title="Expand panel"
+          >
+            <i className="fas fa-chevron-left"></i>
+          </button>
+        </div>
+        <div className="flex-1 flex flex-col items-center justify-center space-y-4 py-4">
+          <button
+            onClick={() => { setActivePanel('citations'); onToggleCollapse(); }}
+            className={`p-2 rounded transition-colors ${
+              activePanel === 'citations' 
+                ? 'bg-blue-100 text-blue-600' 
+                : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'
+            }`}
+            title="Citations"
+          >
+            <i className="fas fa-quote-left"></i>
+          </button>
+          <button
+            onClick={() => { setActivePanel('tools'); onToggleCollapse(); }}
+            className={`p-2 rounded transition-colors ${
+              activePanel === 'tools' 
+                ? 'bg-blue-100 text-blue-600' 
+                : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'
+            }`}
+            title="Tools"
+          >
+            <i className="fas fa-route"></i>
+          </button>
+          <button
+            onClick={() => { setActivePanel('pdfs'); onToggleCollapse(); }}
+            className={`p-2 rounded transition-colors ${
+              activePanel === 'pdfs' 
+                ? 'bg-blue-100 text-blue-600' 
+                : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'
+            }`}
+            title="PDFs"
+          >
+            <i className="fas fa-file-pdf"></i>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="w-80 bg-white border-l border-slate-200 flex flex-col">
+      {/* Header with collapse button */}
+      <div className="flex items-center justify-between p-3 border-b border-slate-200">
+        <h3 className="font-semibold text-slate-700">Inspector</h3>
+        <button
+          onClick={onToggleCollapse}
+          className="p-1 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors"
+          title="Collapse panel"
+        >
+          <i className="fas fa-chevron-right"></i>
+        </button>
+      </div>
+      
       {/* Tabs */}
       <div className="border-b border-slate-200">
         <div className="flex">
@@ -105,7 +172,7 @@ const RightInspector: React.FC<RightInspectorProps> = ({
         )}
 
         {activePanel === 'tools' && (
-          <div className="p-4">
+          <div className="p-3">
             {agentTrace && agentTrace.agent_executions?.length > 0 ? (
               <AgentTheater 
                 trace={agentTrace} 

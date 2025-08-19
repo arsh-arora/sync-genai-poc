@@ -628,6 +628,111 @@ async def get_pdf_page(pdf_id: str, page_num: int):
         ]
     }
 
+# Chat Title Generation endpoint
+@app.post("/generate-chat-title")
+async def generate_chat_title(request: dict):
+    """Generate a meaningful chat title from the first message using LLM"""
+    try:
+        message = request.get('message', '')
+        if not message:
+            return {"title": "New Chat"}
+        
+        from app.llm.gemini import chat
+        
+        system_prompt = """You are a chat title generator. Create a concise, meaningful title (2-6 words) that captures the essence of the user's message.
+
+Guidelines:
+- Keep it short and descriptive
+- Use title case
+- Focus on the main topic or intent
+- Avoid generic words like "Question", "Help", "Chat"
+- Make it specific to the user's need
+
+Examples:
+"I need help financing a dental procedure" → "Dental Financing Options"
+"What are the current KPIs for our portfolio?" → "Portfolio KPI Analysis" 
+"How do I integrate the payment API?" → "Payment API Integration"
+"Tell me about CareCredit" → "CareCredit Information"
+"Show me business metrics" → "Business Metrics Dashboard"
+
+Respond with ONLY the title, nothing else."""
+
+        messages = [{"role": "user", "content": f"Generate a title for this message: {message}"}]
+        title = chat(messages, system=system_prompt)
+        
+        # Clean up the response
+        title = title.strip().strip('"').strip("'")
+        
+        # Fallback if title is too long or empty
+        if len(title) > 50 or len(title) < 2:
+            title = message[:30] + "..." if len(message) > 30 else message
+            
+        return {"title": title}
+        
+    except Exception as e:
+        logger.error(f"Chat title generation failed: {e}")
+        # Fallback to truncated message
+        message = request.get('message', 'New Chat')
+        fallback_title = message[:30] + "..." if len(message) > 30 else message
+        return {"title": fallback_title}
+
+# Persona and Available Agents endpoint
+@app.post("/detect-persona-and-agents")
+async def detect_persona_and_get_agents(request: ChatRequest):
+    """Detect user persona and return available agents"""
+    if not multi_agent_supervisor:
+        raise HTTPException(status_code=500, detail="Supervisor not initialized")
+    
+    try:
+        # Create initial state for persona detection
+        from app.multi_agent.state import create_initial_state
+        initial_state = create_initial_state(
+            original_query=request.message,
+            allow_tavily=request.allow_tavily,
+            allow_llm_knowledge=request.allow_llm_knowledge,
+            allow_web_search=request.allow_web_search,
+            user_context={"user_type": request.user_type}
+        )
+        
+        # Run only the master node for persona detection
+        master_result = await multi_agent_supervisor._master_node(initial_state)
+        
+        detected_persona = master_result.get("detected_persona", "consumer")
+        confidence = master_result.get("persona_confidence", 0.5)
+        reasoning = master_result.get("persona_reasoning", "")
+        
+        # Get available agents based on detected persona
+        if detected_persona == "consumer":
+            available_agents = ['offerpilot', 'dispute', 'collections', 'contracts', 'carecredit', 'narrator', 'trustshield']
+        elif detected_persona == "partner":
+            available_agents = ['devcopilot', 'narrator', 'contracts', 'offerpilot', 'carecredit', 'trustshield']
+        else:
+            available_agents = ['offerpilot', 'dispute', 'collections', 'contracts', 'carecredit', 'narrator', 'trustshield']
+        
+        # Always include smart chat
+        if 'smart' not in available_agents:
+            available_agents.insert(0, 'smart')
+            
+        return {
+            "persona": detected_persona,
+            "confidence": confidence,
+            "reasoning": reasoning,
+            "available_agents": available_agents,
+            "is_confident": confidence >= 0.7
+        }
+        
+    except Exception as e:
+        logger.error(f"Persona detection failed: {e}")
+        # Fallback to consumer persona
+        return {
+            "persona": "consumer", 
+            "confidence": 0.3,
+            "reasoning": "Fallback due to detection error",
+            "available_agents": ['smart', 'offerpilot', 'dispute', 'collections', 'contracts', 'carecredit', 'narrator', 'trustshield'],
+            "is_confident": False,
+            "error": str(e)
+        }
+
 # Health endpoint
 @app.get("/healthz")
 async def health_check():

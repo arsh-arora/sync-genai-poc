@@ -14,6 +14,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `pip install -r requirements.txt` - Install Python dependencies
 - `python main.py` - Start FastAPI backend server on port 8000
 
+### Testing and Quality
+- No lint/test commands configured - check with user before running any quality checks
+- TypeScript compilation is included in `npm run build`
+
 ### Full Development Environment
 ```bash
 # Terminal 1 - Backend
@@ -53,11 +57,23 @@ This is a financial services AI platform with 8 specialized agents built on Fast
 
 ### File Structure
 - `main.py` - FastAPI application entry point with all agent endpoints
-- `app/agents/` - Individual agent implementations
+- `app/agents/` - Individual agent implementations (8 specialized agents)
+  - `chat_agent.py` - Smart Chat routing agent
+  - `offerpilot.py` - Product search and financing
+  - `trustshield.py` - Fraud detection and PII protection  
+  - `dispute_reg_e.py` - Dispute assistance
+  - `collections.py` - Payment plans and hardship support
+  - `devcopilot.py` - Technical support and API docs
+  - `carecredit.py` - Healthcare financing specialist
+  - `narrator.py` - Portfolio analytics
+  - `imagegen.py` - AI image generation
 - `app/rag/` - RAG system (embeddings, retrieval, document store)
+  - `core.py` - ChromaDB integration and retrieval logic
+  - `pipeline.py` - Document processing pipeline
 - `app/llm/gemini.py` - Gemini LLM integration with fallback logic
-- `app/router.py` - Intelligent query routing system
-- `app/services/pdf_processor.py` - PDF processing pipeline
+- `app/router.py` - Intelligent query routing system (confidence-based)
+- `app/services/pdf_processor.py` - LandingAI PDF processing pipeline
+- `app/config/rules_loader.py` - YAML rules configuration loader
 - `src/` - React/TypeScript frontend components
 - `synchrony-demo-rules-repo/` - Business rules and knowledge base files
 
@@ -79,13 +95,19 @@ ALLOW_TAVILY=true  # Optional
 
 **Agent Structure**: Each agent follows a consistent pattern with RAG integration, confidence scoring, and citation tracking.
 
+**Intelligent Routing**: Uses Gemini LLM for intent classification with keyword fallback. Confidence threshold of 0.6 determines routing method.
+
 **RAG Integration**: Documents are indexed as markdown chunks with semantic search. PDF processing extracts text with bounding boxes for interactive viewing.
+
+**Fallback System**: Multi-tiered approach - RAG → LLM Knowledge → Web Search → Legacy Tavily when documents are insufficient.
 
 **Error Handling**: Comprehensive fallback systems ensure graceful degradation when primary knowledge sources fail.
 
 **Security First**: All agents designed for defensive security use only. PII is automatically detected and redacted using Microsoft Presidio.
 
 **TypeScript Frontend**: Strict TypeScript configuration with React, Tailwind CSS, and proper markdown rendering with syntax highlighting.
+
+**Rules-Based Configuration**: YAML files in `synchrony-demo-rules-repo/rules/` define agent behaviors and business logic.
 
 ## API Endpoints
 
@@ -102,3 +124,15 @@ ALLOW_TAVILY=true  # Optional
 - `GET /healthz` - Application health status
 
 The system uses CORS middleware for cross-origin requests and serves static files from the built frontend.
+
+## Important Implementation Notes
+
+**Agent Routing**: The system first attempts Gemini-based classification. If confidence < 0.6, falls back to keyword matching. Default route is TrustShield for security.
+
+**PDF Processing**: Uses LandingAI for text extraction with bounding box coordinates. Processed chunks are automatically indexed into the RAG system.
+
+**PII Protection**: Microsoft Presidio automatically detects and redacts sensitive information (SSN, phone numbers, addresses, etc.) in real-time.
+
+**Document Assessment**: Before falling back to LLM knowledge or web search, the system uses AI to assess whether retrieved documents contain sufficient information to answer the query.
+
+**Business Rules**: The `synchrony-demo-rules-repo/` contains fixtures, golden tests, and YAML configuration files that define agent behaviors and example interactions.

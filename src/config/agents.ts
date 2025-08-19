@@ -96,20 +96,32 @@ export const PARTNER_AGENT_DESCRIPTIONS: Record<string, string> = {
   carecredit: 'Provider enrollment checks and eligibility language'
 };
 
+// Helper function to get initial agents (only Smart Chat)
+export const getInitialAgents = (): Record<string, Agent> => {
+  return {
+    smart: AGENTS.smart
+  };
+};
+
 // Helper function to get available agents for a persona
-export const getAvailableAgents = (userType: UserType): Record<string, Agent> => {
-  // Show all agents initially - backend will filter based on detected persona
-  // This allows users to try any agent and let the system auto-detect context
-  const allAgents: Record<string, Agent> = {};
+export const getAvailableAgents = (userType: UserType, availableAgentKeys?: string[]): Record<string, Agent> => {
+  // If no specific agents provided, show only smart chat initially
+  if (!availableAgentKeys || availableAgentKeys.length === 0) {
+    return getInitialAgents();
+  }
   
-  Object.entries(AGENTS).forEach(([key, agent]) => {
-    // Use Partner-specific description if available
-    const agentCopy = { ...agent };
-    if (userType === 'partner' && PARTNER_AGENT_DESCRIPTIONS[key]) {
-      agentCopy.tooltip = PARTNER_AGENT_DESCRIPTIONS[key];
+  const filteredAgents: Record<string, Agent> = {};
+  
+  availableAgentKeys.forEach(key => {
+    if (AGENTS[key]) {
+      // Use Partner-specific description if available
+      const agentCopy = { ...AGENTS[key] };
+      if (userType === 'partner' && PARTNER_AGENT_DESCRIPTIONS[key]) {
+        agentCopy.tooltip = PARTNER_AGENT_DESCRIPTIONS[key];
+      }
+      filteredAgents[key] = agentCopy;
     }
-    allAgents[key] = agentCopy;
   });
   
-  return allAgents;
+  return filteredAgents;
 };

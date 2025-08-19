@@ -72,6 +72,24 @@ export interface UploadedPdf {
 
 export type UserType = 'consumer' | 'partner';
 
+export interface PersonaDetectionResponse {
+  persona: UserType;
+  confidence: number;
+  reasoning: string;
+  available_agents: string[];
+  is_confident: boolean;
+  error?: string;
+}
+
+export interface ChatHistory {
+  id: string;
+  title: string;
+  messages: Message[];
+  createdAt: Date;
+  updatedAt: Date;
+  persona?: UserType;
+}
+
 // Agent Theater Types
 export interface ToolCall {
   tool_name: string;

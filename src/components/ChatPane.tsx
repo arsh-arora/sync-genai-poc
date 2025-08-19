@@ -12,6 +12,7 @@ interface ChatPaneProps {
   onSendMessage: () => void;
   messagesEndRef: React.RefObject<HTMLDivElement>;
   uploadPdf: (file: File) => void;
+  currentChatTitle: string;
 }
 
 const ChatPane: React.FC<ChatPaneProps> = ({
@@ -22,7 +23,8 @@ const ChatPane: React.FC<ChatPaneProps> = ({
   selectedAgent,
   onSendMessage,
   messagesEndRef,
-  uploadPdf
+  uploadPdf,
+  currentChatTitle
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -115,8 +117,8 @@ const ChatPane: React.FC<ChatPaneProps> = ({
       <div className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center space-x-4">
           <div className="flex items-center space-x-3">
-            <i className={`fas ${AGENTS[selectedAgent]?.icon || 'fa-robot'} ${AGENTS[selectedAgent]?.color || 'text-slate-600'} text-xl`}></i>
-            <span className="font-semibold text-lg text-slate-800">{AGENTS[selectedAgent]?.name || 'AI Assistant'}</span>
+            <i className="fas fa-comments text-blue-600 text-xl"></i>
+            <span className="font-semibold text-lg text-slate-800">{currentChatTitle}</span>
           </div>
           <span className="px-3 py-1 text-sm bg-slate-100 text-slate-600 rounded-full font-medium">
             {messages.length} messages
@@ -124,26 +126,27 @@ const ChatPane: React.FC<ChatPaneProps> = ({
         </div>
         <div className="flex items-center space-x-2 text-sm text-slate-500">
           <i className="fas fa-circle text-green-500"></i>
-          <span className="font-medium">Online</span>
+          <span className="font-medium">AI Assistant</span>
         </div>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-8 space-y-8">
+      <div className="flex-1 overflow-y-auto bg-gradient-to-b from-slate-50 to-white">
+        <div className="p-6 space-y-6">
         {messages.length === 0 ? (
           <div className="text-center py-16">
             <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <i className={`fas ${AGENTS[selectedAgent]?.icon || 'fa-robot'} ${AGENTS[selectedAgent]?.color || 'text-slate-400'} text-3xl`}></i>
+              <i className="fas fa-comments text-slate-400 text-3xl"></i>
             </div>
             <h3 className="text-xl font-semibold text-slate-800 mb-3">
-              Chat with {AGENTS[selectedAgent]?.name || 'AI Assistant'}
+              Start a New Conversation
             </h3>
             <p className="text-base text-slate-600 max-w-lg mx-auto mb-6 leading-relaxed">
-              {AGENTS[selectedAgent]?.tooltip || 'Start a conversation by typing your message below.'}
+              Ask me anything about financial services, healthcare financing, or business partnerships. I'll route your question to the right specialist.
             </p>
             <div className="bg-slate-50 rounded-xl p-4 max-w-md mx-auto">
-              <p className="text-sm text-slate-500 mb-2 font-medium">Try this example:</p>
-              <p className="text-sm text-slate-700 italic">"{AGENTS[selectedAgent]?.example || 'Hello, how can you help me?'}"</p>
+              <p className="text-sm text-slate-500 mb-2 font-medium">Try asking:</p>
+              <p className="text-sm text-slate-700 italic">"I need help financing a dental procedure for $3,500"</p>
             </div>
           </div>
         ) : (
@@ -153,18 +156,35 @@ const ChatPane: React.FC<ChatPaneProps> = ({
         )}
         
         {isLoading && (
-          <div className="flex items-center space-x-3 animate-fade-in">
-            <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center">
-              <i className={`fas ${AGENTS[selectedAgent]?.icon || 'fa-robot'} text-slate-600`}></i>
+          <div className="flex items-start space-x-4 animate-fade-in">
+            <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center animate-pulse">
+              <i className={`fas ${AGENTS[selectedAgent]?.icon || 'fa-robot'} ${AGENTS[selectedAgent]?.color || 'text-slate-600'}`}></i>
             </div>
-            <div className="flex space-x-1">
-              <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></div>
-              <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
-              <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+            <div className="flex-1">
+              <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
+                <div className="px-4 py-3 bg-slate-50 border-b border-slate-100">
+                  <span className="font-semibold text-slate-700">
+                    {AGENTS[selectedAgent]?.name || 'AI Assistant'}
+                  </span>
+                </div>
+                <div className="px-4 py-4">
+                  <div className="flex items-center space-x-3">
+                    <div className="flex space-x-1">
+                      <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></div>
+                      <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
+                      <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                    </div>
+                    <span className="text-sm text-slate-500">
+                      Analyzing your request...
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         )}
         <div ref={messagesEndRef} />
+        </div>
       </div>
 
       {/* Input */}

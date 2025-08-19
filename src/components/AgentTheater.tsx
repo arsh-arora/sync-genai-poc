@@ -139,22 +139,20 @@ const AgentTheater: React.FC<AgentTheaterProps> = ({
 
   // Full detailed version (for right panel)
   return (
-    <div className="space-y-3">
+    <div className="space-y-4 p-1">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-2">
-          <div className="w-5 h-5 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full flex items-center justify-center">
-            <i className="fas fa-route text-white text-xs"></i>
-          </div>
-          <div>
-            <h3 className="text-sm font-medium text-slate-800">Execution Trace</h3>
-            <p className="text-xs text-slate-500">{trace.agent_executions.length} agents • {formatDuration(trace.total_duration_ms)}</p>
-          </div>
+      <div className="flex items-center space-x-2 mb-3">
+        <div className="w-5 h-5 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full flex items-center justify-center">
+          <i className="fas fa-route text-white text-xs"></i>
+        </div>
+        <div className="flex-1">
+          <h3 className="text-sm font-medium text-slate-800">Execution Trace</h3>
+          <p className="text-xs text-slate-500">{trace.agent_executions.length} agents • {formatDuration(trace.total_duration_ms)}</p>
         </div>
       </div>
 
-      {/* Compact Agent Flow */}
-      <div className="space-y-1">
+      {/* Agent Flow */}
+      <div className="space-y-2">
         {trace.agent_executions.map((execution, index) => {
           const agent = AGENTS[execution.agent_name];
           const isVisible = index < animationStage;
@@ -165,34 +163,34 @@ const AgentTheater: React.FC<AgentTheaterProps> = ({
               key={execution.agent_name}
               className={`transition-all duration-500 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}
             >
-              {/* Compact Agent Row */}
+              {/* Agent Row */}
               <div
                 className={`
-                  flex items-center space-x-2 p-2 rounded-lg cursor-pointer transition-all duration-200
+                  flex items-start space-x-3 p-3 rounded-lg cursor-pointer transition-all duration-200
                   ${isExpanded ? 'bg-blue-50 border border-blue-200' : 'bg-slate-50 hover:bg-slate-100'}
                 `}
                 onClick={() => setExpandedAgent(isExpanded ? null : execution.agent_name)}
               >
                 {/* Agent Avatar */}
                 <div className={`
-                  w-6 h-6 rounded-md flex items-center justify-center relative flex-shrink-0
+                  w-7 h-7 rounded-md flex items-center justify-center relative flex-shrink-0 mt-0.5
                   ${agent?.color.replace('text-', 'bg-').replace('-600', '-100') || 'bg-slate-100'}
                 `}>
-                  <i className={`fas ${agent?.icon || 'fa-robot'} ${agent?.color || 'text-slate-600'} text-xs`}></i>
+                  <i className={`fas ${agent?.icon || 'fa-robot'} ${agent?.color || 'text-slate-600'} text-sm`}></i>
                   <div className={`
-                    absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full
+                    absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-white
                     ${execution.status === 'success' ? 'bg-emerald-500' : 'bg-slate-400'}
                   `}></div>
                 </div>
 
                 {/* Agent Info */}
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-slate-800 truncate">{execution.display_name}</span>
-                    <div className="flex items-center space-x-1 text-xs text-slate-500 flex-shrink-0 ml-2">
-                      <span>{formatDuration(execution.duration_ms)}</span>
+                  <div className="flex items-start justify-between mb-1">
+                    <span className="text-sm font-medium text-slate-800 leading-tight">{execution.display_name}</span>
+                    <div className="flex items-center space-x-2 text-xs text-slate-500 flex-shrink-0 ml-3">
+                      <span className="whitespace-nowrap">{formatDuration(execution.duration_ms)}</span>
                       {execution.tool_calls.length > 0 && (
-                        <div className="w-4 h-4 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs">
+                        <div className="w-5 h-5 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs">
                           {execution.tool_calls.length}
                         </div>
                       )}
@@ -201,58 +199,61 @@ const AgentTheater: React.FC<AgentTheaterProps> = ({
                   </div>
                   
                   {execution.input_summary && (
-                    <p className="text-xs text-slate-500 truncate mt-0.5">{execution.input_summary}</p>
+                    <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed">{execution.input_summary}</p>
                   )}
                 </div>
               </div>
 
               {/* Expanded Details */}
               {isExpanded && (
-                <div className="mt-1 ml-8 p-2 bg-white rounded border border-slate-200 animate-slideDown">
-                  {/* Tool Calls - prioritized since they're most important */}
+                <div className="mt-2 ml-10 p-3 bg-white rounded-lg border border-slate-200 animate-slideDown">
+                  {/* Tool Calls */}
                   {execution.tool_calls.length > 0 && (
-                    <div className="mb-2">
-                      <div className="text-xs font-medium text-slate-700 mb-1">Tools:</div>
-                      <div className="space-y-1">
+                    <div className="mb-3">
+                      <div className="text-xs font-medium text-slate-700 mb-2 flex items-center">
+                        <i className="fas fa-wrench mr-1"></i>
+                        Tools Used:
+                      </div>
+                      <div className="space-y-2">
                         {execution.tool_calls.map((toolCall, idx) => (
-                          <div key={idx} className="flex items-center justify-between p-1.5 bg-slate-50 rounded text-xs">
-                            <div className="flex items-center space-x-1.5 flex-1 min-w-0">
+                          <div key={idx} className="flex items-center justify-between p-2 bg-slate-50 rounded text-xs">
+                            <div className="flex items-center space-x-2 flex-1 min-w-0">
                               <i className={`fas ${getStatusIcon(toolCall.status)} ${getStatusColor(toolCall.status)} flex-shrink-0`}></i>
                               <span className="font-medium truncate">{toolCall.tool_name}</span>
                             </div>
-                            <span className="text-slate-500 flex-shrink-0">{formatDuration(toolCall.duration_ms)}</span>
+                            <span className="text-slate-500 flex-shrink-0 ml-2">{formatDuration(toolCall.duration_ms)}</span>
                           </div>
                         ))}
                       </div>
                     </div>
                   )}
 
-                  {/* Input/Output - more concise */}
+                  {/* Input/Output */}
                   {execution.input_summary && (
-                    <div className="mb-2">
-                      <div className="text-xs font-medium text-slate-700 mb-0.5">Input:</div>
-                      <div className="text-xs text-slate-600 bg-slate-50 p-1.5 rounded break-words">{execution.input_summary}</div>
+                    <div className="mb-3">
+                      <div className="text-xs font-medium text-slate-700 mb-1">Input:</div>
+                      <div className="text-xs text-slate-600 bg-slate-50 p-2 rounded-md leading-relaxed break-words max-h-20 overflow-y-auto">{execution.input_summary}</div>
                     </div>
                   )}
 
                   {execution.output_summary && (
-                    <div className="mb-2">
-                      <div className="text-xs font-medium text-slate-700 mb-0.5">Output:</div>
-                      <div className="text-xs text-slate-600 bg-slate-50 p-1.5 rounded break-words">{execution.output_summary}</div>
+                    <div className="mb-3">
+                      <div className="text-xs font-medium text-slate-700 mb-1">Output:</div>
+                      <div className="text-xs text-slate-600 bg-slate-50 p-2 rounded-md leading-relaxed break-words max-h-20 overflow-y-auto">{execution.output_summary}</div>
                     </div>
                   )}
 
                   {/* Confidence bar */}
                   {execution.confidence !== undefined && (
-                    <div className="flex items-center space-x-2">
-                      <span className="text-xs font-medium text-slate-700">Confidence:</span>
-                      <div className="flex-1 bg-slate-200 rounded-full h-1">
+                    <div className="flex items-center space-x-3">
+                      <span className="text-xs font-medium text-slate-700 flex-shrink-0">Confidence:</span>
+                      <div className="flex-1 bg-slate-200 rounded-full h-2">
                         <div 
-                          className="bg-blue-500 h-1 rounded-full transition-all duration-500"
+                          className="bg-gradient-to-r from-blue-500 to-blue-600 h-2 rounded-full transition-all duration-500"
                           style={{ width: `${execution.confidence * 100}%` }}
                         ></div>
                       </div>
-                      <span className="text-xs text-slate-600">{(execution.confidence * 100).toFixed(0)}%</span>
+                      <span className="text-xs text-slate-600 flex-shrink-0 font-medium">{(execution.confidence * 100).toFixed(0)}%</span>
                     </div>
                   )}
                 </div>

@@ -491,18 +491,19 @@ webhook_test = {
     ) -> DevCopilotResponse:
         """Build step-by-step guide response"""
         
-        # Generate response text (3-5 step guide)
+        # Generate response text (3-5 step guide) with proper markdown formatting
         guide_steps = []
         for i, step in enumerate(checklist, 1):
-            guide_steps.append(f"{i}. {step.step}: {step.description}")
+            guide_steps.append(f"{i}. **{step.step}**: {step.description}")
         
-        response_text = f"""**{pattern.title()} Integration Guide:**
+        response_text = f"""# {pattern.title()} Integration Guide
 
 {chr(10).join(guide_steps)}
 
-**What to try now:**
+## What to try now:
+
 - Use the code samples in the checklist below
-- Test with the provided payloads in sandbox mode
+- Test with the provided payloads in sandbox mode  
 - Check the documentation snippets for additional details
 - Validate webhook delivery if applicable"""
         
@@ -560,7 +561,16 @@ webhook_test = {
             system_prompt = """You are a developer support specialist. Help partners integrate with our APIs.
             
             Provide a concise 3-5 step guide based on the documentation snippets.
-            Focus on actionable steps and what to try next."""
+            Focus on actionable steps and what to try next.
+            
+            Format your response using proper markdown:
+            - Use # for main titles
+            - Use ## for section headers  
+            - Use numbered lists for steps
+            - Use bullet points for recommendations
+            - Include proper spacing between sections
+            - Use **bold** for emphasis on key terms
+            - Use code blocks with ``` for code samples"""
             
             context_text = ""
             if doc_snippets:
@@ -594,9 +604,9 @@ webhook_test = {
             
             # Fallback to doc-only response
             if doc_snippets:
-                response_text = "Based on the documentation:\n\n"
+                response_text = "# Based on the documentation:\n\n"
                 for snippet in doc_snippets:
-                    response_text += f"**{snippet.source}:**\n{snippet.content}\n\n"
+                    response_text += f"## {snippet.source}\n\n{snippet.content}\n\n"
             else:
                 response_text = "I don't have specific documentation for that question. Please check the partner portal or contact support."
             

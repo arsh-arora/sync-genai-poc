@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Message, ChatRequest, ChatResponse, UploadedPdf, UserType } from './types';
+import { Message, ChatRequest, ChatResponse, UploadedPdf, UserType, PersonaDetectionResponse, ChatHistory } from './types';
 import { AGENTS } from './config/agents';
 import Header from './components/Header';
 import LeftRail from './components/LeftRail';
@@ -7,8 +7,17 @@ import ChatPane from './components/ChatPane';
 import RightInspector from './components/RightInspector';
 
 function App() {
-  const [userType, setUserType] = useState<UserType>('consumer'); // Default to consumer
+  // Chat History Management
+  const [chatHistories, setChatHistories] = useState<ChatHistory[]>([]);
+  const [currentChatId, setCurrentChatId] = useState<string | null>(null);
+  const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
+  
+  // Current Chat State
+  const [userType, setUserType] = useState<UserType>('consumer');
   const [selectedAgent, setSelectedAgent] = useState('smart');
+  const [availableAgents, setAvailableAgents] = useState<string[]>([]);
+  const [personaDetected, setPersonaDetected] = useState(false);
+  const [personaConfidence, setPersonaConfidence] = useState(0);
   const [allowTavily, setAllowTavily] = useState(false);
   const [allowLlmKnowledge, setAllowLlmKnowledge] = useState(true);
   const [allowWebSearch, setAllowWebSearch] = useState(false);
@@ -23,13 +32,161 @@ function App() {
   const [selectedPdfChunk, setSelectedPdfChunk] = useState(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Get current chat
+  const currentChat = currentChatId ? chatHistories.find(chat => chat.id === currentChatId) : null;
+
   // Auto-scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Load chat history from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('chatHistories');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        const histories = parsed.map((h: any) => ({
+          ...h,
+          createdAt: new Date(h.createdAt),
+          updatedAt: new Date(h.updatedAt),
+          messages: h.messages.map((m: any) => ({
+            ...m,
+            timestamp: new Date(m.timestamp)
+          }))
+        }));
+        setChatHistories(histories);
+      } catch (e) {
+        console.error('Failed to load chat histories:', e);
+      }
+    }
+  }, []);
+
+  // Save chat histories to localStorage whenever they change
+  useEffect(() => {
+    if (chatHistories.length > 0) {
+      localStorage.setItem('chatHistories', JSON.stringify(chatHistories));
+    }
+  }, [chatHistories]);
+
+  // Update current chat messages when messages change
+  useEffect(() => {
+    if (currentChatId && messages.length > 0) {
+      setChatHistories(prev => prev.map(chat => 
+        chat.id === currentChatId 
+          ? { ...chat, messages: [...messages], updatedAt: new Date() }
+          : chat
+      ));
+    }
+  }, [messages, currentChatId]);
+
+  // Update chat history persona when userType changes
+  useEffect(() => {
+    if (currentChatId && personaDetected) {
+      setChatHistories(prev => prev.map(chat => 
+        chat.id === currentChatId 
+          ? { ...chat, persona: userType, updatedAt: new Date() }
+          : chat
+      ));
+    }
+  }, [userType, currentChatId, personaDetected]);
+
+  // Chat Management Functions
+  const createNewChat = () => {
+    const newChatId = Date.now().toString();
+    const newChat: ChatHistory = {
+      id: newChatId,
+      title: 'New Chat',
+      messages: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      persona: userType
+    };
+    
+    setChatHistories(prev => [newChat, ...prev]);
+    setCurrentChatId(newChatId);
+    
+    // Reset current chat state
+    setMessages([]);
+    setCitations([]);
+    setToolTrace([]);
+    setAgentTrace(null);
+    setPersonaDetected(false);
+    setPersonaConfidence(0);
+    setAvailableAgents([]);
+  };
+
+  const selectChat = (chatId: string) => {
+    const chat = chatHistories.find(c => c.id === chatId);
+    if (chat) {
+      setCurrentChatId(chatId);
+      setMessages(chat.messages);
+      setUserType(chat.persona || 'consumer');
+      
+      // Reset other state
+      setCitations([]);
+      setToolTrace([]);
+      setAgentTrace(null);
+      
+      // Extract citations and traces from last message if available
+      const lastMessage = chat.messages[chat.messages.length - 1];
+      if (lastMessage?.role === 'assistant') {
+        setCitations(lastMessage.sources || []);
+        setAgentTrace(lastMessage.agent_trace || null);
+      }
+    }
+  };
+
+  const deleteChat = (chatId: string) => {
+    setChatHistories(prev => prev.filter(chat => chat.id !== chatId));
+    if (currentChatId === chatId) {
+      setCurrentChatId(null);
+      setMessages([]);
+      setCitations([]);
+      setToolTrace([]);
+      setAgentTrace(null);
+    }
+  };
+
+  const updateChatTitle = (chatId: string, title: string) => {
+    setChatHistories(prev => prev.map(chat => 
+      chat.id === chatId 
+        ? { ...chat, title, updatedAt: new Date() }
+        : chat
+    ));
+  };
+
+  const generateChatTitle = async (message: string, chatId: string) => {
+    try {
+      const response = await fetch('/generate-chat-title', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        updateChatTitle(chatId, result.title);
+      } else {
+        // Fallback to truncated message
+        const fallbackTitle = message.length > 50 ? message.substring(0, 47) + '...' : message;
+        updateChatTitle(chatId, fallbackTitle);
+      }
+    } catch (error) {
+      console.error('Failed to generate chat title:', error);
+      // Fallback to truncated message
+      const fallbackTitle = message.length > 50 ? message.substring(0, 47) + '...' : message;
+      updateChatTitle(chatId, fallbackTitle);
+    }
+  };
+
   const sendMessage = async () => {
     if (!inputText.trim()) return;
+
+    // Create new chat if none exists
+    if (!currentChatId) {
+      createNewChat();
+    }
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -39,11 +196,43 @@ function App() {
       timestamp: new Date()
     };
 
+    // Auto-generate chat title from first message using LLM
+    if (messages.length === 0 && currentChatId) {
+      generateChatTitle(inputText, currentChatId);
+    }
+
     setMessages(prev => [...prev, userMessage]);
     setInputText('');
     setIsLoading(true);
 
     try {
+      // Detect persona if not already detected
+      if (!personaDetected && messages.length === 0) {
+        try {
+          const personaResponse = await fetch('/detect-persona-and-agents', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              message: inputText,
+              allow_tavily: allowTavily,
+              allow_llm_knowledge: allowLlmKnowledge,
+              allow_web_search: allowWebSearch,
+              user_type: userType
+            })
+          });
+
+          if (personaResponse.ok) {
+            const personaData: PersonaDetectionResponse = await personaResponse.json();
+            setUserType(personaData.persona);
+            setAvailableAgents(personaData.available_agents);
+            setPersonaDetected(true);
+            setPersonaConfidence(personaData.confidence);
+          }
+        } catch (personaError) {
+          console.warn('Persona detection failed:', personaError);
+          // Continue with default settings
+        }
+      }
       const endpoint = selectedAgent === 'smart' ? '/chat' : `/agent/${selectedAgent}`;
       const payload: ChatRequest | any = selectedAgent === 'smart' 
         ? { 
@@ -165,10 +354,7 @@ function App() {
   };
 
   const clearChat = () => {
-    setMessages([]);
-    setCitations([]);
-    setToolTrace([]);
-    setAgentTrace(null);
+    createNewChat();
   };
 
   const exportJSON = () => {
@@ -186,6 +372,9 @@ function App() {
 
   const handleResetPersona = () => {
     setUserType('consumer');
+    setAvailableAgents([]);
+    setPersonaDetected(false);
+    setPersonaConfidence(0);
     setMessages([]);
     setCitations([]);
     setToolTrace([]);
@@ -214,9 +403,12 @@ function App() {
       <div className="flex-1 flex overflow-hidden">
         {/* Left Rail */}
         <LeftRail 
-          selectedAgent={selectedAgent}
-          onSelectAgent={handleSelectAgent}
-          onUseExample={handleUseExample}
+          chatHistories={chatHistories}
+          currentChatId={currentChatId}
+          onSelectChat={selectChat}
+          onCreateNewChat={createNewChat}
+          onDeleteChat={deleteChat}
+          onUpdateChatTitle={updateChatTitle}
           userType={userType}
         />
 
@@ -230,6 +422,7 @@ function App() {
           onSendMessage={sendMessage}
           messagesEndRef={messagesEndRef}
           uploadPdf={uploadPdf}
+          currentChatTitle={currentChat?.title || 'New Chat'}
         />
 
         {/* Right Inspector */}
@@ -242,6 +435,8 @@ function App() {
           uploadedPdfs={uploadedPdfs}
           selectedPdfChunk={selectedPdfChunk}
           setSelectedPdfChunk={setSelectedPdfChunk}
+          isCollapsed={rightPanelCollapsed}
+          onToggleCollapse={() => setRightPanelCollapsed(!rightPanelCollapsed)}
         />
       </div>
     </div>

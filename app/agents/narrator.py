@@ -458,20 +458,176 @@ class PortfolioIntelNarrator:
             Dict with response, metadata, confidence, sources
         """
         try:
-            result = self.generate_insights(query)
+            # Analyze query to determine response type
+            query_analysis = self._analyze_query(query)
             
-            return {
-                "response": result.response,
-                "metadata": result.metadata,
-                "confidence": 0.8,
-                "sources": []
-            }
+            if query_analysis["needs_kpi"]:
+                result = self.generate_insights(query)
+                return {
+                    "response": result.response,
+                    "metadata": result.metadata,
+                    "confidence": 0.8,
+                    "sources": []
+                }
+            else:
+                # Generate conversational response for non-KPI queries
+                result = self._handle_general_question(query, query_analysis)
+                return {
+                    "response": result,
+                    "metadata": {"ui_cards": [], "query_type": "general"},
+                    "confidence": 0.8,
+                    "sources": []
+                }
             
         except Exception as e:
             logger.error(f"Narrator process_query error: {e}")
             return {
-                "response": f"Error generating portfolio insights: {str(e)}",
+                "response": f"Error processing query: {str(e)}",
                 "confidence": 0.2,
                 "sources": [],
                 "metadata": {"error": str(e)}
             }
+    
+    def _analyze_query(self, query: str) -> Dict[str, Any]:
+        """
+        Use LLM to analyze the query and determine response type
+        
+        Args:
+            query: User query
+            
+        Returns:
+            Dict with query analysis results
+        """
+        try:
+            system_prompt = """You are a query classifier for a Portfolio Intelligence Narrator. 
+            
+            Analyze the user's query and determine what type of response they need.
+            
+            Response types:
+            1. KPI_ANALYSIS: User wants to see actual portfolio metrics, KPIs, performance data, analytics dashboard
+            2. GENERAL_QUESTION: User has general questions, wants explanations, asking about capabilities, greeting, etc.
+            
+            Examples of KPI_ANALYSIS queries:
+            - "Show me portfolio performance"
+            - "What are the current metrics?"
+            - "How is our business doing?"
+            - "Generate insights from the data"
+            - "I need a performance report"
+            - "What are the KPIs?"
+            
+            Examples of GENERAL_QUESTION queries:
+            - "Hello, what can you do?"
+            - "What is portfolio analysis?"
+            - "How do you calculate metrics?"
+            - "Explain what you do"
+            - "What are your capabilities?"
+            - "Help me understand analytics"
+            
+            Respond with ONLY a JSON object:
+            {"response_type": "KPI_ANALYSIS|GENERAL_QUESTION", "confidence": 0.85, "reasoning": "brief explanation"}"""
+            
+            messages = [{"role": "user", "content": f"Classify this query: {query}"}]
+            response = chat(messages, system=system_prompt)
+            
+            # Parse LLM response
+            import json
+            try:
+                # Clean the response to extract JSON
+                response_clean = response.strip()
+                if response_clean.startswith('```json'):
+                    response_clean = response_clean.replace('```json', '').replace('```', '').strip()
+                elif response_clean.startswith('```'):
+                    lines = response_clean.split('\n')
+                    response_clean = '\n'.join(lines[1:-1]).strip()
+                
+                result = json.loads(response_clean)
+                
+                needs_kpi = result.get("response_type") == "KPI_ANALYSIS"
+                confidence = result.get("confidence", 0.7)
+                reasoning = result.get("reasoning", "LLM classification")
+                
+                return {
+                    "needs_kpi": needs_kpi,
+                    "confidence": confidence,
+                    "reasoning": reasoning,
+                    "query_type": result.get("response_type", "GENERAL_QUESTION").lower()
+                }
+                
+            except (json.JSONDecodeError, KeyError) as e:
+                logger.warning(f"Failed to parse LLM classification response: {e}")
+                # Fallback to conservative classification
+                return {
+                    "needs_kpi": False,
+                    "confidence": 0.3,
+                    "reasoning": "Classification parsing failed, defaulting to general question",
+                    "query_type": "general_question"
+                }
+                
+        except Exception as e:
+            logger.error(f"Error in LLM query analysis: {e}")
+            # Conservative fallback
+            return {
+                "needs_kpi": False,
+                "confidence": 0.3,
+                "reasoning": "LLM analysis failed, defaulting to general question",
+                "query_type": "general_question"
+            }
+    
+    def _handle_general_question(self, query: str, analysis: Dict[str, Any]) -> str:
+        """
+        Handle general questions using LLM
+        
+        Args:
+            query: User query
+            analysis: Query analysis results
+            
+        Returns:
+            Conversational response
+        """
+        try:
+            system_prompt = """You are a Portfolio Intelligence Narrator, a financial analytics specialist. 
+            
+            You help users understand portfolio performance, business metrics, and actionable insights.
+            
+            IMPORTANT: Format your response using proper markdown:
+            - Use # for main titles
+            - Use ## for section headers
+            - Use ### for subsections
+            - Use bullet points (-) for lists
+            - Use **bold** for emphasis
+            - Use proper paragraph spacing with empty lines
+            - Keep responses conversational but professional
+            
+            Your capabilities include:
+            - Analyzing portfolio performance metrics and KPIs
+            - Generating actionable business insights with impact scores
+            - Creating data-driven recommendations
+            - Identifying revenue optimization opportunities
+            - Providing trend analysis and forecasting
+            
+            If users want to see actual performance data, analytics, or KPIs, tell them to ask specifically about:
+            "portfolio performance", "business metrics", "KPI dashboard", or "generate insights"."""
+            
+            messages = [{"role": "user", "content": query}]
+            response = chat(messages, system=system_prompt)
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error handling general question: {e}")
+            return f"""# Portfolio Intelligence Narrator
+
+I'm here to help you analyze portfolio performance and generate actionable business insights.
+
+## What I can do:
+
+- **Analyze KPIs and metrics** - Portfolio performance, growth trends, conversion rates
+- **Generate insights** - Data-driven recommendations with impact scores  
+- **Create reports** - Business intelligence dashboards and summaries
+- **Identify opportunities** - Revenue optimization and improvement areas
+
+## Get Started:
+
+Ask me about "portfolio performance" or "business metrics" to see detailed analytics, or ask me any specific question about your business data.
+
+> *To see your current KPI dashboard and insights, just ask: "Show me portfolio performance"*"""
