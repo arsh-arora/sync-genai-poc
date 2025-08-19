@@ -243,11 +243,18 @@ class ChatRequest(BaseModel):
     allow_web_search: Optional[bool] = False
     user_type: Optional[str] = "consumer"
 
+class Citation(BaseModel):
+    source: str
+    snippet: str
+    rule_type: Optional[str] = "Knowledge Base"
+    citation_title: Optional[str] = None
+    relevance_score: Optional[float] = 0.8
+
 class ChatResponse(BaseModel):
     response: str
     agent: str
     confidence: float
-    sources: list[str] = []
+    sources: list[Union[str, Citation]] = []  # Support both legacy strings and enhanced citations
     used_tavily: bool = False
     fallback_used: Optional[str] = None
     document_assessment: Optional[dict] = None
@@ -366,7 +373,30 @@ async def agent_offerpilot(request: OfferRequest):
     
     try:
         result = agents["offerpilot"].process_query(request.query, request.budget, request.user_type)
-        return result.dict()
+        
+        # Extract citations from metadata for frontend
+        citations = []
+        if hasattr(result, 'metadata') and result.metadata and 'citations' in result.metadata:
+            for citation_dict in result.metadata['citations']:
+                citations.append(citation_dict)
+            logger.info(f"OfferPilot endpoint extracted {len(citations)} citations from metadata")
+        else:
+            logger.warning(f"OfferPilot endpoint: No citations found in metadata. Has metadata: {hasattr(result, 'metadata')}, metadata keys: {list(result.metadata.keys()) if hasattr(result, 'metadata') and result.metadata else 'None'}")
+        
+        # Format response for frontend compatibility
+        response_data = {
+            "response": result.response,
+            "agent": "offerpilot",
+            "confidence": 0.9,  # Default confidence for direct agent calls
+            "sources": citations,  # Pass citations as sources
+            "used_tavily": False,
+            "fallback_used": None,
+            "metadata": result.metadata if hasattr(result, 'metadata') else {}
+        }
+        
+        logger.info(f"OfferPilot endpoint returning {len(citations)} sources to frontend")
+        
+        return response_data
     except Exception as e:
         logger.error(f"OfferPilot error: {e}")
         raise HTTPException(status_code=500, detail=str(e))

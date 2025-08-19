@@ -25,7 +25,7 @@ function App() {
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [rightPanel, setRightPanel] = useState('citations');
-  const [citations, setCitations] = useState<string[]>([]);
+  const [citations, setCitations] = useState<(string | import('./types').Citation)[]>([]);
   const [toolTrace, setToolTrace] = useState<any[]>([]);
   const [agentTrace, setAgentTrace] = useState<any>(null);
   const [uploadedPdfs, setUploadedPdfs] = useState<UploadedPdf[]>([]);

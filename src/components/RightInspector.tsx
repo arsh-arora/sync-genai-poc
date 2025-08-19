@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { UploadedPdf, AgentTrace } from '../types';
+import { UploadedPdf, AgentTrace, Citation } from '../types';
 import AgentTheater from './AgentTheater';
 
 interface RightInspectorProps {
   activePanel: string;
   setActivePanel: (panel: string) => void;
-  citations: string[];
+  citations: (string | Citation)[];
   toolTrace: any[];
   agentTrace: AgentTrace | null;
   uploadedPdfs: UploadedPdf[];
@@ -148,18 +148,46 @@ const RightInspector: React.FC<RightInspectorProps> = ({
             <h3 className="text-lg font-semibold text-slate-800 mb-6">Sources & Citations</h3>
             {citations.length > 0 ? (
               <div className="space-y-4">
-                {citations.map((citation, index) => (
-                  <div key={index} className="p-4 bg-slate-50 rounded-xl border border-slate-200 hover:border-slate-300 transition-colors">
-                    <div className="flex items-start space-x-3">
-                      <span className="flex-shrink-0 w-7 h-7 bg-teal-100 text-teal-700 rounded-full text-sm font-semibold flex items-center justify-center">
-                        {index + 1}
-                      </span>
-                      <div className="text-base text-slate-700 leading-relaxed font-medium">
-                        {citation}
+                {citations.map((citation, index) => {
+                  // Handle both string citations (legacy) and object citations (enhanced)
+                  const isObjectCitation = typeof citation === 'object' && citation !== null;
+                  const citationSource = isObjectCitation ? citation.source : `Citation ${index + 1}`;
+                  const citationContent = isObjectCitation ? citation.snippet : citation;
+                  const ruleType = isObjectCitation ? citation.rule_type : null;
+                  const relevanceScore = isObjectCitation ? citation.relevance_score : null;
+                  
+                  return (
+                    <div key={index} className="p-4 bg-slate-50 rounded-xl border border-slate-200 hover:border-slate-300 transition-colors">
+                      <div className="flex items-start space-x-3">
+                        <span className="flex-shrink-0 w-7 h-7 bg-teal-100 text-teal-700 rounded-full text-sm font-semibold flex items-center justify-center">
+                          {index + 1}
+                        </span>
+                        <div className="flex-1">
+                          <div className="flex items-start justify-between mb-2">
+                            <div>
+                              <div className="text-sm font-semibold text-slate-800">
+                                {citationSource}
+                              </div>
+                              {ruleType && (
+                                <div className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 mt-1">
+                                  {ruleType}
+                                </div>
+                              )}
+                            </div>
+                            {relevanceScore !== null && relevanceScore !== undefined && (
+                              <div className="text-xs text-slate-500">
+                                {(relevanceScore * 100).toFixed(0)}% match
+                              </div>
+                            )}
+                          </div>
+                          <div className="text-sm text-slate-700 leading-relaxed bg-white p-3 rounded border border-slate-200">
+                            {citationContent}
+                          </div>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div className="text-center py-12">

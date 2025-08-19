@@ -12,7 +12,7 @@ export interface Message {
   content: string;
   agent: string;
   confidence?: number;
-  sources?: string[];
+  sources?: (string | Citation)[];  // Support both legacy strings and enhanced citations
   used_tavily?: boolean;
   fallback_used?: string | null;
   document_assessment?: DocumentAssessment | null;
@@ -49,11 +49,19 @@ export interface ChatRequest {
   user_type?: UserType;
 }
 
+export interface Citation {
+  source: string;
+  snippet: string;
+  rule_type?: string;
+  citation_title?: string;
+  relevance_score?: number;
+}
+
 export interface ChatResponse {
   response: string;
   agent: string;
   confidence: number;
-  sources: string[];
+  sources: (string | Citation)[];  // Support both legacy strings and enhanced citations
   used_tavily: boolean;
   fallback_used?: string | null;
   document_assessment?: DocumentAssessment | null;

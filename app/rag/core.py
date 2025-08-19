@@ -265,7 +265,7 @@ def build_retriever(docstore: InMemoryDocumentStore) -> InMemoryEmbeddingRetriev
 
 def retrieve(retriever: InMemoryEmbeddingRetriever, embedder: GeminiEmbedder, query: str, k: int = 5) -> List[Dict[str, Any]]:
     """
-    Retrieve relevant documents for a query
+    Retrieve relevant documents for a query with enhanced citation information
     
     Args:
         retriever: Haystack embedding retriever
@@ -274,7 +274,7 @@ def retrieve(retriever: InMemoryEmbeddingRetriever, embedder: GeminiEmbedder, qu
         k: Number of results to return
         
     Returns:
-        List of dictionaries with source, snippet, and score
+        List of dictionaries with source, snippet, score, and citation details
     """
     try:
         # Embed the query
@@ -284,18 +284,28 @@ def retrieve(retriever: InMemoryEmbeddingRetriever, embedder: GeminiEmbedder, qu
         result = retriever.run(query_embedding=query_embedding, top_k=k)
         documents = result.get("documents", [])
         
-        # Format results
+        # Format results with enhanced citation information
         formatted_results = []
         for doc in documents:
-            formatted_results.append({
+            # Get full content - don't truncate for citations
+            content = doc.content if doc.content else ""
+            
+            # Create enhanced citation with rule/passage details
+            citation_result = {
                 "source": doc.meta.get("source", "unknown"),
-                "snippet": doc.content,
+                "snippet": content,  # Full content, not truncated
                 "score": getattr(doc, 'score', 0.0),
                 "filename": doc.meta.get("filename", "unknown"),
                 "type": doc.meta.get("type", "unknown"),
                 "chunk_id": doc.meta.get("chunk_id", 0),
-                "line_span": f"{doc.meta.get('start_line', 0)}-{doc.meta.get('end_line', 0)}"
-            })
+                "line_span": f"{doc.meta.get('start_line', 0)}-{doc.meta.get('end_line', 0)}",
+                # Enhanced citation fields
+                "citation_title": _extract_citation_title(content, doc.meta.get("filename", "unknown")),
+                "rule_type": _determine_rule_type(doc.meta.get("filename", ""), doc.meta.get("type", "")),
+                "content_preview": _create_content_preview(content),
+                "relevance_score": float(getattr(doc, 'score', 0.0))
+            }
+            formatted_results.append(citation_result)
         
         logger.info(f"Retrieved {len(formatted_results)} documents for query: {query}")
         return formatted_results
@@ -303,3 +313,68 @@ def retrieve(retriever: InMemoryEmbeddingRetriever, embedder: GeminiEmbedder, qu
     except Exception as e:
         logger.error(f"Error during retrieval: {e}")
         return []
+
+def _extract_citation_title(content: str, filename: str) -> str:
+    """Extract a meaningful title from content or filename"""
+    if not content:
+        return filename.replace('.md', '').replace('_', ' ').title()
+    
+    # Look for markdown headers
+    lines = content.split('\n')
+    for line in lines[:10]:  # Check first 10 lines
+        line = line.strip()
+        if line.startswith('# '):
+            return line[2:].strip()
+        elif line.startswith('## '):
+            return line[3:].strip()
+    
+    # Fallback to filename
+    return filename.replace('.md', '').replace('_', ' ').title()
+
+def _determine_rule_type(filename: str, doc_type: str) -> str:
+    """Determine the type of rule/policy based on filename and type"""
+    filename_lower = filename.lower()
+    
+    if 'promotion' in filename_lower or 'offer' in filename_lower:
+        return "Promotional Terms"
+    elif 'privacy' in filename_lower:
+        return "Privacy Policy"
+    elif 'security' in filename_lower:
+        return "Security Guidelines"
+    elif 'dispute' in filename_lower:
+        return "Dispute Policy"
+    elif 'contract' in filename_lower:
+        return "Contract Terms"
+    elif 'trustshield' in filename_lower:
+        return "Security Rules"
+    elif 'collection' in filename_lower:
+        return "Collections Policy"
+    elif doc_type == "policy":
+        return "Policy Document"
+    elif doc_type == "contract":
+        return "Contract Document"
+    elif doc_type == "data":
+        return "Data Reference"
+    else:
+        return "Knowledge Base"
+
+def _create_content_preview(content: str, max_length: int = 150) -> str:
+    """Create a preview of the content for display"""
+    if not content:
+        return ""
+    
+    # Clean up content
+    clean_content = content.replace('\n', ' ').replace('\t', ' ')
+    # Remove extra whitespace
+    clean_content = ' '.join(clean_content.split())
+    
+    if len(clean_content) <= max_length:
+        return clean_content
+    
+    # Truncate at word boundary
+    truncated = clean_content[:max_length]
+    last_space = truncated.rfind(' ')
+    if last_space > 0:
+        truncated = truncated[:last_space]
+    
+    return truncated + "..."

@@ -68,9 +68,9 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
           )}
         </div>
 
-        <div className="flex-1 max-w-4xl">
+        <div className="flex-1 max-w-5xl">
           {/* Enhanced Message Header */}
-          <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow duration-200">
             <div className={`px-4 py-3 ${AGENTS[message.agent]?.color?.replace('text-', 'bg-') || 'bg-slate-500'} bg-opacity-5 border-b border-slate-100`}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
@@ -107,8 +107,8 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
             </div>
 
             {/* Enhanced Message Content */}
-            <div className="px-4 py-4">
-              <div className="prose prose-slate max-w-none">
+            <div className="px-6 py-5">
+              <div className="prose prose-slate prose-lg max-w-none">
                 <MarkdownRenderer content={message.content} />
               </div>
             </div>

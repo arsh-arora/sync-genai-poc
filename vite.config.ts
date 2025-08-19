@@ -11,6 +11,8 @@ export default defineConfig({
       '/upload': 'http://localhost:8000',
       '/pdf': 'http://localhost:8000',
       '/healthz': 'http://localhost:8000',
+      '/detect-persona-and-agents': 'http://localhost:8000',
+      '/generate-chat-title': 'http://localhost:8000',
     }
   },
   build: {

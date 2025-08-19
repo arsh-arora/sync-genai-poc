@@ -190,14 +190,25 @@ class FinancialServicesSupervisor:
                 
                 # Execute the graph workflow
                 logger.info(f"🚀 Executing LangGraph with initial state: {list(initial_state.keys())}")
-                final_state = await self.graph.ainvoke(initial_state)
-                logger.info(f"✅ Graph execution completed. Final state keys: {list(final_state.keys())}")
-                logger.info(f"🔍 Graph final state final_response: {final_state.get('final_response')}")
-                
-                # Update smart agent execution with final response
-                if smart_execution:
-                    response_preview = str(final_state.get('final_response', ''))[:200]
-                    tracer.set_agent_summaries(output_summary=response_preview)
+                try:
+                    final_state = await self.graph.ainvoke(initial_state)
+                    logger.info(f"✅ Graph execution completed. Final state keys: {list(final_state.keys())}")
+                    logger.info(f"🔍 Graph final state final_response: {final_state.get('final_response')}")
+                    
+                    # Update smart agent execution with final response
+                    if smart_execution:
+                        response_preview = str(final_state.get('final_response', ''))[:200]
+                        tracer.set_agent_summaries(output_summary=response_preview)
+                except Exception as graph_error:
+                    logger.error(f"Graph execution failed: {graph_error}", exc_info=True)
+                    # Create a fallback final_state
+                    final_state = {
+                        "final_response": "I apologize, but I encountered an error while processing your request.",
+                        "total_confidence": 0.0,
+                        "all_sources": [],
+                        "fallback_used": True,
+                        "errors": [str(graph_error)]
+                    }
             
             # Format response for API compatibility
             response = self._format_response(final_state)
@@ -816,11 +827,14 @@ Respond with JSON:
                 except (ValueError, IndexError):
                     next_agent = None
                 
+                # Extract citations from the agent result
+                agent_citations = self._extract_citations_from_agent_result(result) if result.success else []
+                
                 return {
                     "agent_results": agent_results,
                     "completed_agents": completed_agents,
                     "current_agent": next_agent,
-                    "all_sources": result.sources if result.success else []
+                    "all_sources": agent_citations
                 }
                 
             except Exception as e:
@@ -902,7 +916,12 @@ Respond with JSON:
                         for disclosure in disclosures[:2]:  # Limit to first 2
                             response_text += f"• {disclosure}\n"
                     
-                    sources = []  # OfferPilotResponse doesn't have citations in the old format
+                    # Extract citations from metadata
+                    sources = []
+                    if result.metadata and 'citations' in result.metadata:
+                        for citation_dict in result.metadata['citations']:
+                            sources.append(citation_dict)
+                        logger.info(f"Extracted {len(sources)} citations from OfferPilot result")
                     
                     if agent_execution:
                         tracer.set_agent_summaries(output_summary=response_text[:200])
@@ -1104,7 +1123,9 @@ Respond with JSON:
                     "metadata": result.metadata,
                     "processing_time": result.processing_time
                 })
-                all_sources.extend(result.sources)
+                # Extract citations from agent results
+                agent_sources = self._extract_citations_from_agent_result(result)
+                all_sources.extend(agent_sources)
             
             synthesis_prompt = f"""You are a response synthesizer for a multi-agent financial services AI system. Create a comprehensive, coherent response from multiple specialized agent outputs.
 
@@ -1151,10 +1172,24 @@ Format your response in clean, well-structured markdown that will render beautif
             
             logger.info(f"✨ Synthesis successful. Response length: {len(synthesized_response)}")
             
+            # Deduplicate sources by source field (since they're now dictionaries)
+            seen_sources = set()
+            unique_sources = []
+            for source in all_sources:
+                if isinstance(source, dict):
+                    source_key = source.get('source', 'unknown')
+                    if source_key not in seen_sources:
+                        seen_sources.add(source_key)
+                        unique_sources.append(source)
+                elif isinstance(source, str):
+                    if source not in seen_sources:
+                        seen_sources.add(source)
+                        unique_sources.append(source)
+            
             return {
                 "final_response": synthesized_response,
                 "total_confidence": total_confidence,
-                "all_sources": list(set(all_sources))  # Deduplicate sources
+                "all_sources": unique_sources
             }
             
         except Exception as e:
@@ -1172,10 +1207,24 @@ Format your response in clean, well-structured markdown that will render beautif
                     fallback_response += f"## {agent_name.title()} Analysis\n\n{result.response}\n\n"
                     all_sources.extend(result.sources)
                 
+                # Deduplicate fallback sources
+                seen_sources = set()
+                unique_sources = []
+                for source in all_sources:
+                    if isinstance(source, dict):
+                        source_key = source.get('source', 'unknown')
+                        if source_key not in seen_sources:
+                            seen_sources.add(source_key)
+                            unique_sources.append(source)
+                    elif isinstance(source, str):
+                        if source not in seen_sources:
+                            seen_sources.add(source)
+                            unique_sources.append(source)
+                
                 return {
                     "final_response": fallback_response,
                     "total_confidence": sum(r.confidence for r in successful_results.values()) / len(successful_results),
-                    "all_sources": list(set(all_sources)),
+                    "all_sources": unique_sources,
                     "fallback_used": True
                 }
             else:
@@ -1284,18 +1333,32 @@ Format your response in clean, well-structured markdown that will render beautif
             if not final_response:
                 final_response = "I apologize, but I was unable to generate a response. Please try again."
         
-        # Collect UI cards from all successful agent results
+        # Collect UI cards and citations from all successful agent results
         all_ui_cards = []
+        all_citations = []
+        
         for agent_name, result in agent_results.items():
             if result.success and hasattr(result, 'metadata') and result.metadata:
                 ui_cards = result.metadata.get('ui_cards', [])
                 all_ui_cards.extend(ui_cards)
+                
+        # Extract citations from agent results (for both single and multi-agent cases)
+        for agent_name, result in agent_results.items():
+            if result.success:
+                agent_citations = self._extract_citations_from_agent_result(result)
+                all_citations.extend(agent_citations)
+        
+        # Use extracted citations if we don't have any from synthesis
+        final_sources = final_state.get("all_sources", [])
+        if not final_sources and all_citations:
+            final_sources = all_citations
+            logger.info(f"Using extracted citations from agent results: {len(final_sources)} citations")
 
         response_data = {
             "response": final_response,
             "agent": primary_agent,
             "confidence": final_state.get("total_confidence", 0.0),
-            "sources": final_state.get("all_sources", []),
+            "sources": final_sources,
             "used_tavily": final_state.get("allow_tavily", False),
             "fallback_used": "yes" if final_state.get("fallback_used", False) else None,
             "document_assessment": {
@@ -1329,6 +1392,65 @@ Format your response in clean, well-structured markdown that will render beautif
                 logger.info(f"🔍 UI Card {i+1}: type={card_type}, has_image={has_image}")
         
         return response_data
+    
+    def _extract_citations_from_agent_result(self, result) -> List[Dict[str, Any]]:
+        """Extract and format citations from agent result"""
+        citations = []
+        
+        try:
+            # First, check if sources field contains citation dictionaries (main path for OfferPilot)
+            if hasattr(result, 'sources') and result.sources:
+                logger.info(f"Found {len(result.sources)} items in agent sources field")
+                for source in result.sources:
+                    if isinstance(source, dict):
+                        # Already a properly formatted citation dictionary
+                        citations.append({
+                            'source': source.get('source', 'Unknown'),
+                            'snippet': source.get('snippet', ''),
+                            'rule_type': source.get('rule_type', 'Knowledge Base'),
+                            'citation_title': source.get('citation_title', source.get('source', 'Unknown')),
+                            'relevance_score': source.get('relevance_score', 0.8)
+                        })
+                    elif isinstance(source, str):
+                        # Legacy string format
+                        citations.append({
+                            'source': source,
+                            'snippet': f'Referenced from {source}',
+                            'rule_type': 'Knowledge Base',
+                            'citation_title': source,
+                            'relevance_score': 0.7
+                        })
+
+            # Second, check if agent result has citations in metadata (alternative path)
+            if not citations and hasattr(result, 'metadata') and result.metadata:
+                agent_citations = result.metadata.get('citations', [])
+                logger.info(f"Found {len(agent_citations)} citations in agent metadata")
+                for citation in agent_citations:
+                    if hasattr(citation, 'source') and hasattr(citation, 'snippet'):
+                        # Citation object format
+                        citations.append({
+                            'source': citation.source,
+                            'snippet': citation.snippet,
+                            'rule_type': getattr(citation, 'rule_type', 'Knowledge Base'),
+                            'citation_title': getattr(citation, 'citation_title', citation.source),
+                            'relevance_score': getattr(citation, 'relevance_score', 0.8)
+                        })
+                    elif isinstance(citation, dict):
+                        # Dictionary format
+                        citations.append({
+                            'source': citation.get('source', 'Unknown'),
+                            'snippet': citation.get('snippet', ''),
+                            'rule_type': citation.get('rule_type', 'Knowledge Base'),
+                            'citation_title': citation.get('citation_title', citation.get('source', 'Unknown')),
+                            'relevance_score': citation.get('relevance_score', 0.8)
+                        })
+            
+            logger.info(f"Extracted {len(citations)} total citations from agent result")
+            
+        except Exception as e:
+            logger.error(f"Error extracting citations from agent result: {e}")
+        
+        return citations
     
     async def _emergency_fallback(self, query: str, allow_tavily: bool, allow_llm_knowledge: bool, allow_web_search: bool) -> Dict[str, Any]:
         """Emergency fallback when entire system fails"""

@@ -46,6 +46,9 @@ class OfferPilotResponse(BaseModel):
 class Citation(BaseModel):
     source: str
     snippet: str
+    rule_type: Optional[str] = "Knowledge Base"
+    citation_title: Optional[str] = None
+    relevance_score: Optional[float] = 0.8
 
 @dataclass
 class UserStub:
@@ -200,8 +203,17 @@ class OfferPilot:
             # Step 4: Generate response summary
             response_text = self._generate_response_summary(ui_cards, prequal)
             
-            # Step 5: Check for handoffs
+            # Step 5: Get citations for promotional terms
+            citations = self._get_promotional_citations(ui_cards)
+            logger.info(f"OfferPilot generated {len(citations)} citations")
+            for i, citation in enumerate(citations):
+                logger.info(f"Citation {i+1}: source='{citation.source}', snippet_length={len(citation.snippet)}")
+            
+            # Step 6: Check for handoffs
             handoffs = self._detect_handoffs(query)
+            
+            citations_dict = [citation.dict() for citation in citations]
+            logger.info(f"Citations converted to dict: {len(citations_dict)} items")
             
             return OfferPilotResponse(
                 response=response_text,
@@ -209,7 +221,8 @@ class OfferPilot:
                     "ui_cards": [card.dict() for card in ui_cards],
                     "disclosures": list(all_disclosures),
                     "handoffs": handoffs,
-                    "prequalification": prequal.dict()
+                    "prequalification": prequal.dict(),
+                    "citations": citations_dict
                 }
             )
             
@@ -441,13 +454,13 @@ class OfferPilot:
     
     def _get_promotional_citations(self, items: List[ProductCard]) -> List[Citation]:
         """
-        Get promotional terms citations from knowledge base
+        Get promotional terms citations from knowledge base with actual rule content
         
         Args:
             items: List of product items
             
         Returns:
-            List of citations
+            List of citations with actual rule passages
         """
         citations = []
         
@@ -458,26 +471,58 @@ class OfferPilot:
         try:
             # Create query for promotional terms
             offer_types = set()
+            partner_names = set()
+            
             for item in items:
+                partner_names.add(item.partner)
                 for promo in item.promos:
                     if promo.type == "deferred_interest":
                         offer_types.add("0% APR deferred interest financing")
                     elif promo.type == "equal_payment":
                         offer_types.add("equal payment financing")
             
+            # Query for general promotional terms
             if offer_types:
-                query = f"promotional terms {' '.join(offer_types)}"
-                
-                # Retrieve relevant terms documents
+                query = f"promotional terms {' '.join(offer_types)} disclosures"
                 results = retrieve(self.retriever, self.embedder, query, k=3)
                 
                 for result in results:
+                    # Create detailed citation with actual rule content
                     citations.append(Citation(
-                        source=result.get("filename", "Promotional Terms"),
-                        snippet=result.get("snippet", "")[:200] + "..."
+                        source=f"{result.get('rule_type', 'Promotional Terms')} - {result.get('citation_title', result.get('filename', 'Unknown'))}",
+                        snippet=result.get('snippet', '')[0:500] + ("..." if len(result.get('snippet', '')) > 500 else "")
                     ))
             
-            # If no local terms found, search web for Synchrony terms
+            # Query for partner-specific rules from rules files
+            if partner_names and self.promotions_rules:
+                for partner_name in partner_names:
+                    partner_rules = self.promotions_rules.get('partners', [])
+                    for partner_rule in partner_rules:
+                        if partner_rule.get('partner_id') == partner_name:
+                            # Extract actual rule content
+                            rule_content = self._format_partner_rule_content(partner_rule)
+                            if rule_content:
+                                citations.append(Citation(
+                                    source=f"Partner Rules - {partner_name.title()} Promotional Terms",
+                                    snippet=rule_content
+                                ))
+            
+            # Add disclosure citations from rules
+            if self.disclosures_rules:
+                for disclosure_key in ["equal_payment_generic", "deferred_interest_generic"]:
+                    if disclosure_key in self.disclosures_rules:
+                        disclosure_content = self.disclosures_rules[disclosure_key]
+                        if isinstance(disclosure_content, dict):
+                            disclosure_text = disclosure_content.get('text', str(disclosure_content))
+                        else:
+                            disclosure_text = str(disclosure_content)
+                        
+                        citations.append(Citation(
+                            source=f"Legal Disclosures - {disclosure_key.replace('_', ' ').title()}",
+                            snippet=disclosure_text
+                        ))
+            
+            # If still no local terms found, search web for Synchrony terms
             if not citations:
                 logger.info("No local promotional terms found, searching web...")
                 try:
@@ -495,8 +540,8 @@ class OfferPilot:
                         
                         for result in results:
                             citations.append(Citation(
-                                source=result.get("filename", "Web Search"),
-                                snippet=result.get("snippet", "")[:200] + "..."
+                                source=f"Web Search - {result.get('citation_title', result.get('filename', 'Synchrony Terms'))}",
+                                snippet=result.get('snippet', '')[0:400] + ("..." if len(result.get('snippet', '')) > 400 else "")
                             ))
                             
                 except Exception as e:
@@ -506,6 +551,37 @@ class OfferPilot:
             logger.error(f"Error retrieving promotional citations: {e}")
         
         return citations
+    
+    def _format_partner_rule_content(self, partner_rule: dict) -> str:
+        """Format partner rule content for citation display"""
+        try:
+            content_parts = []
+            partner_id = partner_rule.get('partner_id', 'Unknown')
+            
+            # Add partner info
+            content_parts.append(f"Partner: {partner_id.title()}")
+            
+            # Add categories
+            if 'categories_allowed' in partner_rule:
+                categories = ', '.join(partner_rule['categories_allowed'])
+                content_parts.append(f"Categories: {categories}")
+            
+            # Add promotional offers
+            if 'promos' in partner_rule:
+                content_parts.append("Promotional Offers:")
+                for promo in partner_rule['promos']:
+                    promo_type = promo.get('type', '').replace('_', ' ').title()
+                    months = promo.get('months', 0)
+                    min_purchase = promo.get('min_purchase', 0)
+                    min_purchase_formatted = f"${min_purchase/100:.2f}" if min_purchase else "$0"
+                    
+                    content_parts.append(f"- {promo_type}: {months} months, minimum purchase {min_purchase_formatted}")
+            
+            return ' | '.join(content_parts)
+            
+        except Exception as e:
+            logger.error(f"Error formatting partner rule content: {e}")
+            return f"Partner rule for {partner_rule.get('partner_id', 'Unknown')}"
     
     # New rules-aware helper methods
     def _search_products(self, query: str, budget: Optional[float] = None) -> List[Dict[str, Any]]:
