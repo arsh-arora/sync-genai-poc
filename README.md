@@ -70,4 +70,4 @@ ALLOW_TAVILY=true  # Optional
 - **Frontend**: React + TypeScript with proper markdown rendering
 - **AI**: Google Gemini with document assessment and knowledge fallbacks
 - **PDF Processing**: Landing AI with bounding box extraction
-- **Security**: PII redaction and TrustShield content filtering
+- **Security**: PII redaction and TrustShield content filtering# synchrony-final
